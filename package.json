@@ -1,0 +1,32 @@
+{
+  "name": "dale-viaje-backend",
+  "version": "1.0.0",
+  "description": "API REST para aplicación de mandaditos Dale Viaje",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node src/scripts/seedAdmin.js",
+    "packages": "node src/scripts/createPackages.js"
+  },
+  "keywords": ["mandaditos", "delivery", "pwa"],
+  "author": "Dale Viaje",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.0.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.0",
+    "dotenv": "^16.0.3",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.6.1",
+    "express-validator": "^7.0.1",
+    "moment": "^2.29.4",
+    "helmet": "^7.0.0",
+    "compression": "^1.7.4"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
