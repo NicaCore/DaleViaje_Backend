@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: dale-viaje-api
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: APP_NAME
+        value: DaleViaje
+      - key: APP_DEPARTMENT
+        value: Juigalpa, Chontales
+      - key: MAX_ACTIVE_ORDERS
+        value: 2
+      - key: CREDITS_PER_ORDER
+        value: 5
+      - key: FEATURED_CREDITS
+        value: 150
+      - key: ADMIN_PHONE
+        sync: false
+      - key: ADMIN_BANK_NAME
+        sync: false
+      - key: ADMIN_ACCOUNT_NUMBER
+        sync: false
+      - key: ADMIN_ACCOUNT_TYPE
+        sync: false
+      - key: ADMIN_USD_PHONE
+        sync: false
+      - key: ADMIN_USD_BANK
+        sync: false
+      - key: ADMIN_USD_ACCOUNT
+        sync: false
