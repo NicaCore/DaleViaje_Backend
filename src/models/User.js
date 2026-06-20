@@ -1,3 +1,4 @@
+// src/models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { ROLES } = require('../config/constants');
@@ -87,14 +88,58 @@ const userSchema = new mongoose.Schema({
   lastLogin: {
     type: Date,
     default: null
+  },
+  // ========== NUEVOS CAMPOS ==========
+  deviceId: {
+    type: String,
+    default: null
+  },
+  devicePlatform: {
+    type: String,
+    enum: ['ios', 'android', 'web', null],
+    default: null
+  },
+  pushNotificationsEnabled: {
+    type: Boolean,
+    default: true
+  },
+  emailNotificationsEnabled: {
+    type: Boolean,
+    default: true
+  },
+  locationHistory: [{
+    coordinates: {
+      type: [Number],
+      required: true
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    accuracy: {
+      type: Number,
+      default: null
+    }
+  }],
+  lastActiveLocation: {
+    coordinates: {
+      type: [Number],
+      default: null
+    },
+    updatedAt: {
+      type: Date,
+      default: null
+    }
   }
 }, {
   timestamps: true
 });
 
+// Índices
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ location: '2dsphere' });
+userSchema.index({ lastActiveLocation: '2dsphere' });
 
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();

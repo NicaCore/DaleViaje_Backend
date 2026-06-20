@@ -1,3 +1,4 @@
+// src/models/Mandadito.js
 const mongoose = require('mongoose');
 const { DAYS } = require('../config/constants');
 
@@ -107,15 +108,68 @@ const mandaditoSchema = new mongoose.Schema({
       type: Number,
       required: true
     }
-  }]
+  }],
+  // ========== NUEVOS CAMPOS ==========
+  stats: {
+    totalEarnings: {
+      type: Number,
+      default: 0
+    },
+    weeklyEarnings: {
+      type: Number,
+      default: 0
+    },
+    monthlyEarnings: {
+      type: Number,
+      default: 0
+    },
+    completionRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100
+    },
+    averageResponseTime: {
+      type: Number,
+      default: 0
+    },
+    totalCancelled: {
+      type: Number,
+      default: 0
+    },
+    totalDistance: {
+      type: Number,
+      default: 0
+    }
+  },
+  availability: {
+    isOnline: {
+      type: Boolean,
+      default: false
+    },
+    lastOnline: {
+      type: Date,
+      default: null
+    },
+    isAvailable: {
+      type: Boolean,
+      default: true
+    },
+    currentLocation: {
+      coordinates: [Number],
+      updatedAt: Date
+    }
+  }
 }, {
   timestamps: true
 });
 
+// Índices
 mandaditoSchema.index({ userId: 1 });
 mandaditoSchema.index({ isFeatured: -1 });
 mandaditoSchema.index({ rating: -1 });
 mandaditoSchema.index({ totalDeliveries: -1 });
+mandaditoSchema.index({ 'availability.currentLocation': '2dsphere' });
 
 mandaditoSchema.methods.canAcceptMoreOrders = function() {
   return this.activeOrders.length < this.maxActiveOrders;
@@ -135,6 +189,42 @@ mandaditoSchema.methods.deductCredits = async function(amount = 5) {
 
 mandaditoSchema.methods.addCredits = async function(amount) {
   this.credits += amount;
+  
+  // Actualizar featured si tiene 150+ créditos
+  if (this.credits >= 150) {
+    this.isFeatured = true;
+  }
+  
+  return this.save();
+};
+
+mandaditoSchema.methods.updateStats = async function(orderAmount, distance) {
+  this.totalDeliveries += 1;
+  this.earnings += orderAmount;
+  
+  // Actualizar estadísticas
+  this.stats.totalEarnings += orderAmount;
+  this.stats.totalDistance += distance;
+  
+  // Calcular completion rate
+  const completed = this.deliveryHistory.filter(d => d.orderId).length;
+  const total = this.totalDeliveries + this.stats.totalCancelled;
+  this.stats.completionRate = total > 0 ? (completed / total) * 100 : 0;
+  
+  return this.save();
+};
+
+mandaditoSchema.methods.updateAvailability = async function(isOnline, location) {
+  this.availability.isOnline = isOnline;
+  this.availability.lastOnline = new Date();
+  
+  if (location) {
+    this.availability.currentLocation = {
+      coordinates: location.coordinates,
+      updatedAt: new Date()
+    };
+  }
+  
   return this.save();
 };
 

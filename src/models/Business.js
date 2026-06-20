@@ -1,3 +1,4 @@
+// src/models/Business.js
 const mongoose = require('mongoose');
 const { BUSINESS_TYPES, PAYMENT_STATUS } = require('../config/constants');
 
@@ -80,14 +81,12 @@ const businessSchema = new mongoose.Schema({
     enum: Object.values(PAYMENT_STATUS),
     default: PAYMENT_STATUS.PENDING
   },
-  // NUEVO: Referencia de pago para el negocio
   paymentReference: {
     type: String,
     unique: true,
     sparse: true,
     default: null
   },
-  // NUEVO: Fecha de pago
   paymentDate: {
     type: Date,
     default: null
@@ -105,6 +104,34 @@ const businessSchema = new mongoose.Schema({
     default: 0,
     min: 0,
     max: 5
+  },
+  // ========== NUEVOS CAMPOS ==========
+  stats: {
+    totalSales: {
+      type: Number,
+      default: 0
+    },
+    weeklySales: {
+      type: Number,
+      default: 0
+    },
+    monthlySales: {
+      type: Number,
+      default: 0
+    },
+    totalRevenue: {
+      type: Number,
+      default: 0
+    }
+  },
+  schedule: {
+    monday: { open: String, close: String, isOpen: { type: Boolean, default: true } },
+    tuesday: { open: String, close: String, isOpen: { type: Boolean, default: true } },
+    wednesday: { open: String, close: String, isOpen: { type: Boolean, default: true } },
+    thursday: { open: String, close: String, isOpen: { type: Boolean, default: true } },
+    friday: { open: String, close: String, isOpen: { type: Boolean, default: true } },
+    saturday: { open: String, close: String, isOpen: { type: Boolean, default: true } },
+    sunday: { open: String, close: String, isOpen: { type: Boolean, default: false } }
   }
 }, {
   timestamps: true
@@ -116,5 +143,12 @@ businessSchema.index({ businessType: 1 });
 businessSchema.index({ location: '2dsphere' });
 businessSchema.index({ isApproved: 1, isActive: 1 });
 businessSchema.index({ paymentReference: 1 });
+
+businessSchema.methods.updateStats = async function(amount) {
+  this.totalOrders += 1;
+  this.stats.totalSales += 1;
+  this.stats.totalRevenue += amount;
+  return this.save();
+};
 
 module.exports = mongoose.model('Business', businessSchema);

@@ -1,3 +1,4 @@
+// src/models/Order.js
 const mongoose = require('mongoose');
 const { ORDER_STATUS, ORDER_TYPES } = require('../config/constants');
 
@@ -133,17 +134,101 @@ const orderSchema = new mongoose.Schema({
       default: Date.now
     },
     note: String
-  }]
+  }],
+  // ========== NUEVOS CAMPOS ==========
+  tracking: {
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'in_progress', 'completed', 'cancelled'],
+      default: 'pending'
+    },
+    updates: [{
+      status: {
+        type: String,
+        enum: ['pending', 'accepted', 'in_progress', 'completed', 'cancelled'],
+        required: true
+      },
+      location: {
+        coordinates: [Number],
+        address: String
+      },
+      timestamp: {
+        type: Date,
+        default: Date.now
+      },
+      note: String,
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    }],
+    currentLocation: {
+      coordinates: [Number],
+      updatedAt: Date
+    },
+    estimatedTime: {
+      type: Number,
+      default: null
+    },
+    distanceRemaining: {
+      type: Number,
+      default: null
+    }
+  },
+  notifications: [{
+    type: {
+      type: String,
+      enum: ['order_created', 'order_accepted', 'order_in_progress', 'order_completed', 'order_cancelled', 'message', 'location_update']
+    },
+    message: String,
+    sentTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    read: {
+      type: Boolean,
+      default: false
+    },
+    readAt: Date,
+    sentAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  rating: {
+    clientRating: {
+      score: {
+        type: Number,
+        min: 1,
+        max: 5,
+        default: null
+      },
+      comment: String,
+      ratedAt: Date
+    },
+    mandaditoRating: {
+      score: {
+        type: Number,
+        min: 1,
+        max: 5,
+        default: null
+      },
+      comment: String,
+      ratedAt: Date
+    }
+  }
 }, {
   timestamps: true
 });
 
+// Índices
 orderSchema.index({ clientId: 1, status: 1 });
 orderSchema.index({ mandaditoId: 1, status: 1 });
 orderSchema.index({ voucherCode: 1 });
 orderSchema.index({ pickupLocation: '2dsphere' });
 orderSchema.index({ deliveryLocation: '2dsphere' });
 orderSchema.index({ createdAt: -1 });
+orderSchema.index({ 'tracking.currentLocation': '2dsphere' });
 
 orderSchema.pre('save', function(next) {
   if (!this.voucherCode) {
@@ -158,6 +243,14 @@ orderSchema.pre('save', function(next) {
       date: new Date(),
       note: `Estado cambiado a ${this.status}`
     });
+    
+    // Actualizar tracking
+    this.tracking.status = this.status;
+    this.tracking.updates.push({
+      status: this.status,
+      timestamp: new Date(),
+      note: `Estado actualizado a ${this.status}`
+    });
   }
   
   next();
@@ -171,6 +264,35 @@ orderSchema.methods.canClientCancel = function() {
 orderSchema.methods.canMandaditoComplete = function() {
   return this.status === ORDER_STATUS.ACCEPTED || 
          this.status === ORDER_STATUS.IN_PROGRESS;
+};
+
+orderSchema.methods.addTrackingUpdate = async function(status, location, note) {
+  this.tracking.status = status;
+  this.tracking.updates.push({
+    status,
+    location: location || this.tracking.currentLocation,
+    timestamp: new Date(),
+    note: note || `Estado: ${status}`
+  });
+  
+  if (location) {
+    this.tracking.currentLocation = {
+      coordinates: location.coordinates,
+      updatedAt: new Date()
+    };
+  }
+  
+  return this.save();
+};
+
+orderSchema.methods.addNotification = async function(type, message, userId) {
+  this.notifications.push({
+    type,
+    message,
+    sentTo: userId,
+    sentAt: new Date()
+  });
+  return this.save();
 };
 
 module.exports = mongoose.model('Order', orderSchema);

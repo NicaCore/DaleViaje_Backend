@@ -1,3 +1,4 @@
+// src/controllers/orderController.js
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Client = require('../models/Client');
@@ -60,6 +61,18 @@ exports.createPublicOrder = async (req, res) => {
 
     order.chatId = chat._id;
     await order.save();
+
+    // ===== NUEVO: Agregar notificación =====
+    await order.addNotification('order_created', 'Tu mandado fue creado exitosamente', clientId);
+
+    // Emitir via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${clientId}`).emit('new_order', {
+        orderId: order._id,
+        voucherCode: order.voucherCode
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -159,6 +172,23 @@ exports.createAssignedOrder = async (req, res) => {
     order.chatId = chat._id;
     await order.save();
 
+    // ===== NUEVO: Agregar notificaciones =====
+    await order.addNotification('order_created', 'Te han asignado un nuevo mandado', mandaditoId);
+    await order.addNotification('order_accepted', 'Tu mandado fue aceptado por un mandadito', clientId);
+
+    // Emitir via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${mandaditoId}`).emit('new_assigned_order', {
+        orderId: order._id,
+        voucherCode: order.voucherCode
+      });
+      io.to(`user_${clientId}`).emit('order_accepted', {
+        orderId: order._id,
+        voucherCode: order.voucherCode
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: 'Mandado asignado exitosamente',
@@ -225,6 +255,22 @@ exports.acceptPublicOrder = async (req, res) => {
       { mandaditoId }
     );
 
+    // ===== NUEVO: Agregar notificaciones =====
+    await order.addNotification('order_accepted', 'Tu mandado fue aceptado', order.clientId);
+    await order.addNotification('order_accepted', 'Aceptaste un nuevo mandado', mandaditoId);
+
+    // ===== NUEVO: Actualizar tracking =====
+    await order.addTrackingUpdate('accepted', null, 'Mandado aceptado por mandadito');
+
+    // Emitir via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${order.clientId}`).emit('order_accepted', {
+        orderId: order._id,
+        mandaditoId: mandaditoId
+      });
+    }
+
     res.json({
       success: true,
       message: 'Mandado aceptado exitosamente',
@@ -266,13 +312,32 @@ exports.completeOrder = async (req, res) => {
     order.completedAt = new Date();
     await order.save();
 
-    await Mandadito.findOneAndUpdate(
-      { userId: order.mandaditoId },
-      { 
-        $pull: { activeOrders: order._id },
-        $inc: { earnings: order.amount, totalDeliveries: 1 }
-      }
-    );
+    // ===== NUEVO: Actualizar tracking =====
+    await order.addTrackingUpdate('completed', null, 'Mandado completado');
+
+    // ===== NUEVO: Agregar notificación =====
+    await order.addNotification('order_completed', 'Tu mandado fue completado', order.clientId);
+
+    const mandadito = await Mandadito.findOne({ userId: order.mandaditoId });
+    if (mandadito) {
+      mandadito.activeOrders = mandadito.activeOrders.filter(
+        id => id.toString() !== orderId
+      );
+      mandadito.earnings += order.amount;
+      mandadito.totalDeliveries += 1;
+      
+      // ===== NUEVO: Actualizar estadísticas =====
+      await mandadito.updateStats(order.amount, order.distance);
+      await mandadito.save();
+    }
+
+    // Emitir via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${order.clientId}`).emit('order_completed', {
+        orderId: order._id
+      });
+    }
 
     res.json({
       success: true,
@@ -322,14 +387,30 @@ exports.cancelOrder = async (req, res) => {
     order.cancellationReason = reason || 'Cancelado por el cliente';
     await order.save();
 
+    // ===== NUEVO: Actualizar tracking =====
+    await order.addTrackingUpdate('cancelled', null, `Cancelado: ${order.cancellationReason}`);
+
+    // ===== NUEVO: Agregar notificación =====
+    await order.addNotification('order_cancelled', `Tu mandado fue cancelado: ${order.cancellationReason}`, order.clientId);
+
     if (order.mandaditoId) {
-      await Mandadito.findOneAndUpdate(
-        { userId: order.mandaditoId },
-        {
-          $pull: { activeOrders: order._id },
-          $inc: { credits: 5 }
-        }
-      );
+      const mandadito = await Mandadito.findOne({ userId: order.mandaditoId });
+      if (mandadito) {
+        mandadito.activeOrders = mandadito.activeOrders.filter(
+          id => id.toString() !== orderId
+        );
+        mandadito.credits += 5;
+        mandadito.stats.totalCancelled += 1;
+        await mandadito.save();
+      }
+      
+      // Notificar al mandadito
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`user_${order.mandaditoId}`).emit('order_cancelled', {
+          orderId: order._id
+        });
+      }
     }
 
     res.json({
@@ -386,6 +467,9 @@ exports.requestCreditRefund = async (req, res) => {
     order.creditRefundStatus = 'pending';
     await order.save();
 
+    // ===== NUEVO: Agregar notificación =====
+    await order.addNotification('order_created', 'Solicitud de devolución de créditos enviada', userId);
+
     res.json({
       success: true,
       message: 'Solicitud de devolución enviada',
@@ -397,6 +481,189 @@ exports.requestCreditRefund = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al solicitar devolución'
+    });
+  }
+};
+
+// ===== NUEVO: Actualizar ubicación de mandado =====
+exports.updateOrderLocation = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { latitude, longitude } = req.body;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    if (order.mandaditoId.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'No autorizado'
+      });
+    }
+
+    await order.addTrackingUpdate(
+      order.status,
+      { coordinates: [longitude, latitude] },
+      'Ubicación actualizada'
+    );
+
+    // Emitir via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${order.clientId}`).emit('order_location_update', {
+        orderId: order._id,
+        latitude,
+        longitude
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Ubicación actualizada',
+      location: { latitude, longitude }
+    });
+
+  } catch (error) {
+    console.error('Error actualizando ubicación:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar ubicación'
+    });
+  }
+};
+
+// ===== NUEVO: Calificar mandado =====
+exports.rateOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { rating, comment, role } = req.body;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    if (order.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo se pueden calificar mandados completados'
+      });
+    }
+
+    if (role === 'client' && order.clientId.toString() === userId) {
+      order.rating.clientRating = {
+        score: rating,
+        comment: comment || '',
+        ratedAt: new Date()
+      };
+    } else if (role === 'mandadito' && order.mandaditoId.toString() === userId) {
+      order.rating.mandaditoRating = {
+        score: rating,
+        comment: comment || '',
+        ratedAt: new Date()
+      };
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: 'No autorizado para calificar este mandado'
+      });
+    }
+
+    await order.save();
+
+    // Actualizar rating del mandadito
+    if (role === 'client') {
+      const mandadito = await Mandadito.findOne({ userId: order.mandaditoId });
+      if (mandadito) {
+        const allRatings = await Order.find({
+          mandaditoId: order.mandaditoId,
+          'rating.clientRating.score': { $ne: null }
+        });
+        
+        const total = allRatings.reduce((sum, o) => sum + o.rating.clientRating.score, 0);
+        mandadito.rating = total / allRatings.length;
+        await mandadito.save();
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Calificación enviada',
+      rating: order.rating
+    });
+
+  } catch (error) {
+    console.error('Error calificando mandado:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al calificar mandado'
+    });
+  }
+};
+
+// ===== NUEVO: Obtener seguimiento de mandado =====
+exports.getOrderTracking = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId)
+      .populate('clientId', 'firstName lastName profilePhoto')
+      .populate('mandaditoId', 'firstName lastName profilePhoto');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    // Verificar acceso
+    const isClient = order.clientId._id.toString() === userId;
+    const isMandadito = order.mandaditoId && order.mandaditoId._id.toString() === userId;
+    const isAdmin = req.userRole === 'admin';
+
+    if (!isClient && !isMandadito && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'No autorizado'
+      });
+    }
+
+    res.json({
+      success: true,
+      tracking: {
+        status: order.tracking.status,
+        updates: order.tracking.updates,
+        currentLocation: order.tracking.currentLocation,
+        estimatedTime: order.tracking.estimatedTime,
+        distanceRemaining: order.tracking.distanceRemaining
+      },
+      order: {
+        id: order._id,
+        voucherCode: order.voucherCode,
+        description: order.description,
+        pickupAddress: order.pickupAddress,
+        deliveryAddress: order.deliveryAddress,
+        amount: order.amount
+      }
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo seguimiento:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener seguimiento'
     });
   }
 };
