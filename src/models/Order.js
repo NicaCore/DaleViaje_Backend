@@ -74,8 +74,7 @@ const orderSchema = new mongoose.Schema({
   },
   voucherCode: {
     type: String,
-    unique: true,
-    required: true
+    unique: true
   },
   businessProducts: [{
     name: String,
@@ -175,6 +174,7 @@ orderSchema.index({ createdAt: -1 });
 
 // PRE-SAVE: Generar voucherCode
 orderSchema.pre('save', function(next) {
+  // ✅ CORREGIDO: Generar voucherCode SIEMPRE
   if (!this.voucherCode) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -182,6 +182,7 @@ orderSchema.pre('save', function(next) {
   }
   
   if (this.isModified('status')) {
+    if (!this.statusHistory) this.statusHistory = [];
     this.statusHistory.push({
       status: this.status,
       date: new Date(),
@@ -232,14 +233,6 @@ orderSchema.methods.addTrackingUpdate = async function(status, location, note) {
   }
   
   return this.save();
-};
-
-orderSchema.methods.canClientCancel = function() {
-  return this.status === 'pending' || this.status === 'accepted';
-};
-
-orderSchema.methods.canMandaditoComplete = function() {
-  return this.status === 'accepted' || this.status === 'in_progress';
 };
 
 module.exports = mongoose.model('Order', orderSchema);
