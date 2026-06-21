@@ -54,17 +54,15 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  // ✅ CORREGIDO: location con coordenadas de Juigalpa
-  location: {
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point'
-    },
-    coordinates: {
-      type: [Number],
-      default: [-85.0, 12.0]
-    }
+  // ✅ ELIMINAMOS location y usamos un campo simple
+  // En lugar de usar índices 2dsphere, usamos campos separados
+  latitude: {
+    type: Number,
+    default: 12.0 // Juigalpa
+  },
+  longitude: {
+    type: Number,
+    default: -85.0 // Juigalpa
   },
   profilePhoto: {
     type: String,
@@ -106,40 +104,14 @@ const userSchema = new mongoose.Schema({
   emailNotificationsEnabled: {
     type: Boolean,
     default: true
-  },
-  locationHistory: [{
-    coordinates: {
-      type: [Number],
-      required: true
-    },
-    timestamp: {
-      type: Date,
-      default: Date.now
-    },
-    accuracy: {
-      type: Number,
-      default: null
-    }
-  }],
-  // ✅ CORREGIDO: lastActiveLocation con null
-  lastActiveLocation: {
-    coordinates: {
-      type: [Number],
-      default: null
-    },
-    updatedAt: {
-      type: Date,
-      default: null
-    }
   }
 }, {
   timestamps: true
 });
 
-// ✅ ÍNDICES CORRECTOS
+// ✅ Índices SIMPLES (sin 2dsphere)
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
-userSchema.index({ location: '2dsphere' }, { sparse: true });
 
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
@@ -159,6 +131,13 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 
 userSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`;
+});
+
+userSchema.virtual('location').get(function() {
+  return {
+    type: 'Point',
+    coordinates: [this.longitude, this.latitude]
+  };
 });
 
 userSchema.set('toJSON', {

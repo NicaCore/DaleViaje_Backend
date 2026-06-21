@@ -1,3 +1,4 @@
+// src/controllers/authController.js
 const User = require('../models/User');
 const Client = require('../models/Client');
 const Mandadito = require('../models/Mandadito');
@@ -5,10 +6,11 @@ const Business = require('../models/Business');
 const jwt = require('jsonwebtoken');
 const { getImageUrl } = require('../middleware/upload');
 
-// Registrar usuario - CORREGIDO
+// Registrar usuario - VERSIÓN FINAL
 exports.register = async (req, res) => {
   try {
     console.log('📝 Body recibido:', req.body);
+    console.log('📎 Files:', req.files ? Object.keys(req.files) : 'ninguno');
     
     const { 
       firstName, lastName, email, password, phone, 
@@ -32,7 +34,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    // ✅ Datos base del usuario con ubicación por defecto
+    // ✅ Datos base del usuario
     const userData = {
       firstName,
       lastName,
@@ -45,29 +47,24 @@ exports.register = async (req, res) => {
       locationAccess: false,
       notificationsEnabled: true,
       backgroundMode: true,
-      location: {
-        type: 'Point',
-        coordinates: [-85.0, 12.0]
-      }
+      latitude: 12.0,
+      longitude: -85.0
     };
 
-    // ✅ SOLO CLIENTE: foto de perfil es OPCIONAL
+    // ✅ Cliente: foto de perfil OPCIONAL
     if (role === 'client') {
       if (req.file) {
         userData.profilePhoto = getImageUrl(req.file.filename, 'profiles');
-      } else if (req.files && req.files.profilePhoto) {
-        const file = req.files.profilePhoto;
-        if (file && file[0]) {
-          userData.profilePhoto = getImageUrl(file[0].filename, 'profiles');
-        }
+      } else if (req.files && req.files.profilePhoto && req.files.profilePhoto[0]) {
+        userData.profilePhoto = getImageUrl(req.files.profilePhoto[0].filename, 'profiles');
       }
     }
 
-    console.log('👤 Datos de usuario a guardar:', { ...userData, password: '******' });
+    console.log('👤 Guardando usuario:', { ...userData, password: '******' });
 
     const user = new User(userData);
     await user.save();
-    console.log('✅ Usuario guardado:', user._id);
+    console.log('✅ Usuario guardado ID:', user._id);
 
     let profile = null;
     let profileData = {};
@@ -82,7 +79,6 @@ exports.register = async (req, res) => {
     
     // ========== MANDADITO ==========
     else if (role === 'mandadito') {
-      // Parsear datos adicionales
       let workDays = [];
       let restDays = [];
       let schedule = { start: '08:00', end: '18:00' };
@@ -94,35 +90,30 @@ exports.register = async (req, res) => {
         schedule = additionalData.schedule ? JSON.parse(additionalData.schedule) : { start: '08:00', end: '18:00' };
         lunchTime = additionalData.lunchTime ? JSON.parse(additionalData.lunchTime) : { start: '12:00', end: '13:00' };
       } catch (e) {
-        console.warn('⚠️ Error parseando datos del mandadito:', e.message);
+        console.warn('⚠️ Error parseando datos:', e.message);
       }
       
-      // ✅ Mandadito: Verificar documentos requeridos
+      // Verificar documentos requeridos
+      const hasProfilePhoto = req.files && req.files.profilePhoto && req.files.profilePhoto[0];
       const hasVehiclePhoto = req.files && req.files.vehiclePhoto && req.files.vehiclePhoto[0];
       const hasLicensePhoto = req.files && req.files.licensePhoto && req.files.licensePhoto[0];
       const hasCedulaPhoto = req.files && req.files.cedulaPhoto && req.files.cedulaPhoto[0];
 
-      if (!hasVehiclePhoto || !hasLicensePhoto || !hasCedulaPhoto) {
+      if (!hasProfilePhoto || !hasVehiclePhoto || !hasLicensePhoto || !hasCedulaPhoto) {
         await User.findByIdAndDelete(user._id);
         return res.status(400).json({
           success: false,
-          message: 'Faltan documentos requeridos para registro como mandadito: vehiclePhoto, licensePhoto, cedulaPhoto'
+          message: 'Faltan documentos requeridos para registro como mandadito'
         });
-      }
-
-      // ✅ Mandadito: foto de perfil REQUERIDA
-      let profilePhotoUrl = null;
-      if (req.files && req.files.profilePhoto && req.files.profilePhoto[0]) {
-        profilePhotoUrl = getImageUrl(req.files.profilePhoto[0].filename, 'profiles');
       }
 
       profile = new Mandadito({
         userId: user._id,
-        profilePhoto: profilePhotoUrl,
         workDays,
         restDays,
         schedule,
         lunchTime,
+        profilePhoto: getImageUrl(req.files.profilePhoto[0].filename, 'profiles'),
         vehiclePhoto: getImageUrl(req.files.vehiclePhoto[0].filename, 'vehicles'),
         licensePhoto: getImageUrl(req.files.licensePhoto[0].filename, 'licenses'),
         cedulaPhoto: getImageUrl(req.files.cedulaPhoto[0].filename, 'ids'),
@@ -140,15 +131,8 @@ exports.register = async (req, res) => {
       let businessType = additionalData.businessType || '';
       let description = additionalData.description || '';
       let address = additionalData.address || '';
-      let location = { coordinates: [-85.0, 12.0] };
 
-      try {
-        location = additionalData.location ? JSON.parse(additionalData.location) : { coordinates: [-85.0, 12.0] };
-      } catch (e) {
-        console.warn('⚠️ Error parseando ubicación del negocio:', e.message);
-      }
-      
-      // ✅ Negocio: Verificar documentos requeridos
+      // Verificar documentos requeridos
       const hasBusinessPhoto = req.files && req.files.businessPhoto && req.files.businessPhoto[0];
       const hasPaymentReceipt = req.files && req.files.paymentReceipt && req.files.paymentReceipt[0];
 
@@ -156,11 +140,10 @@ exports.register = async (req, res) => {
         await User.findByIdAndDelete(user._id);
         return res.status(400).json({
           success: false,
-          message: 'Faltan documentos requeridos para registro como negocio: businessPhoto, paymentReceipt'
+          message: 'Faltan documentos requeridos para registro como negocio'
         });
       }
 
-      // Generar referencia de pago
       const timestamp = Date.now().toString(36).toUpperCase();
       const random = Math.random().toString(36).substring(2, 8).toUpperCase();
       const paymentReference = `NEG-${timestamp}-${random}`;
@@ -171,7 +154,7 @@ exports.register = async (req, res) => {
         businessType,
         description,
         address,
-        location,
+        location: { coordinates: [-85.0, 12.0] },
         profilePhoto: getImageUrl(req.files.businessPhoto[0].filename, 'businesses'),
         paymentReceipt: getImageUrl(req.files.paymentReceipt[0].filename, 'receipts'),
         paymentStatus: 'pending',
@@ -182,7 +165,6 @@ exports.register = async (req, res) => {
       profileData = profile;
       console.log('✅ Perfil de negocio guardado');
 
-      // Información de pago
       const paymentInfo = {
         phone: process.env.ADMIN_PHONE || '88888888',
         bank: process.env.ADMIN_BANK_NAME || 'BANPRO',
@@ -191,7 +173,7 @@ exports.register = async (req, res) => {
         amount: 4,
         currency: 'USD',
         reference: paymentReference,
-        message: 'Realiza el pago de $4 USD a nuestra billetera móvil y sube el comprobante para activar tu negocio.'
+        message: 'Realiza el pago de $4 USD para activar tu negocio.'
       };
 
       const token = jwt.sign(
@@ -220,7 +202,6 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Generar token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
@@ -266,7 +247,7 @@ exports.register = async (req, res) => {
   }
 };
 
-// Iniciar sesión - CORREGIDO
+// Iniciar sesión - VERSIÓN FINAL
 exports.login = async (req, res) => {
   try {
     console.log('🔐 Intento de login:', req.body.email);
@@ -459,20 +440,11 @@ exports.updateLocation = async (req, res) => {
       });
     }
 
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-      return res.status(400).json({
-        success: false,
-        message: 'Coordenadas inválidas'
-      });
-    }
-
     const user = await User.findByIdAndUpdate(
       userId,
       {
-        location: {
-          type: 'Point',
-          coordinates: [longitude, latitude]
-        },
+        latitude: latitude,
+        longitude: longitude,
         locationAccess: true
       },
       { new: true }
@@ -498,7 +470,7 @@ exports.updateLocation = async (req, res) => {
     res.json({
       success: true,
       message: 'Ubicación actualizada',
-      location: user.location
+      location: { latitude, longitude }
     });
 
   } catch (error) {
