@@ -1,3 +1,4 @@
+// src/routes/orderRoutes.js - VERSIÓN CORREGIDA
 const express = require('express');
 const router = express.Router();
 const { auth, checkRole } = require('../middleware/auth');
