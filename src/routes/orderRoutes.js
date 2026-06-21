@@ -3,6 +3,8 @@ const express = require('express');
 const router = express.Router();
 const { auth, checkRole } = require('../middleware/auth');
 const { validateOrder } = require('../middleware/validation');
+
+// ✅ Importar TODAS las funciones del controlador
 const {
   createPublicOrder,
   createAssignedOrder,
@@ -11,10 +13,7 @@ const {
   acceptPublicOrder,
   completeOrder,
   cancelOrder,
-  requestCreditRefund,
-  updateOrderLocation,
-  rateOrder,
-  getOrderTracking
+  requestCreditRefund
 } = require('../controllers/orderController');
 
 // ===== TODAS LAS RUTAS REQUIEREN AUTENTICACIÓN =====
@@ -33,10 +32,5 @@ router.put('/:orderId/cancel', checkRole(['client']), cancelOrder);
 router.put('/:orderId/accept', checkRole(['mandadito']), acceptPublicOrder);
 router.put('/:orderId/complete', checkRole(['mandadito']), completeOrder);
 router.post('/:orderId/refund', checkRole(['mandadito']), requestCreditRefund);
-
-// ===== SEGUIMIENTO Y CALIFICACIÓN =====
-router.put('/:orderId/location', checkRole(['mandadito']), updateOrderLocation);
-router.post('/:orderId/rate', auth, rateOrder);
-router.get('/:orderId/tracking', auth, getOrderTracking);
 
 module.exports = router;
