@@ -1,4 +1,3 @@
-// src/routes/orderRoutes.js
 const express = require('express');
 const router = express.Router();
 const { auth, checkRole } = require('../middleware/auth');
@@ -6,27 +5,36 @@ const { validateOrder } = require('../middleware/validation');
 const {
   createPublicOrder,
   createAssignedOrder,
+  getMyOrders,
+  getAvailableOrders,
   acceptPublicOrder,
   completeOrder,
   cancelOrder,
   requestCreditRefund,
-  updateOrderLocation, // NUEVO
-  rateOrder, // NUEVO
-  getOrderTracking // NUEVO
+  updateOrderLocation,
+  rateOrder,
+  getOrderTracking
 } = require('../controllers/orderController');
 
-// Clientes
-router.post('/public', auth, checkRole(['client']), validateOrder, createPublicOrder);
-router.post('/assigned', auth, checkRole(['client']), validateOrder, createAssignedOrder);
-router.put('/:orderId/cancel', auth, checkRole(['client']), cancelOrder);
+// ===== TODAS LAS RUTAS REQUIEREN AUTENTICACIÓN =====
+router.use(auth);
 
-// Mandaditos
-router.put('/:orderId/accept', auth, checkRole(['mandadito']), acceptPublicOrder);
-router.put('/:orderId/complete', auth, checkRole(['mandadito']), completeOrder);
-router.post('/:orderId/refund', auth, checkRole(['mandadito']), requestCreditRefund);
+// ===== OBTENER ÓRDENES =====
+router.get('/', getMyOrders);
+router.get('/available', checkRole(['mandadito']), getAvailableOrders);
 
-// ===== NUEVAS RUTAS =====
-router.put('/:orderId/location', auth, checkRole(['mandadito']), updateOrderLocation);
+// ===== CLIENTES =====
+router.post('/public', checkRole(['client']), validateOrder, createPublicOrder);
+router.post('/assigned', checkRole(['client']), validateOrder, createAssignedOrder);
+router.put('/:orderId/cancel', checkRole(['client']), cancelOrder);
+
+// ===== MANDADITOS =====
+router.put('/:orderId/accept', checkRole(['mandadito']), acceptPublicOrder);
+router.put('/:orderId/complete', checkRole(['mandadito']), completeOrder);
+router.post('/:orderId/refund', checkRole(['mandadito']), requestCreditRefund);
+
+// ===== SEGUIMIENTO Y CALIFICACIÓN =====
+router.put('/:orderId/location', checkRole(['mandadito']), updateOrderLocation);
 router.post('/:orderId/rate', auth, rateOrder);
 router.get('/:orderId/tracking', auth, getOrderTracking);
 

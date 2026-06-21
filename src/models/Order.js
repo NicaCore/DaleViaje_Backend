@@ -1,4 +1,3 @@
-// src/models/Order.js
 const mongoose = require('mongoose');
 const { ORDER_STATUS, ORDER_TYPES } = require('../config/constants');
 
@@ -79,24 +78,10 @@ const orderSchema = new mongoose.Schema({
     required: true
   },
   businessProducts: [{
-    name: {
-      type: String,
-      required: true
-    },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 1
-    },
-    price: {
-      type: Number,
-      required: true,
-      min: 0
-    },
-    total: {
-      type: Number,
-      required: true
-    }
+    name: String,
+    quantity: Number,
+    price: Number,
+    total: Number
   }],
   totalBusinessAmount: {
     type: Number,
@@ -135,7 +120,6 @@ const orderSchema = new mongoose.Schema({
     },
     note: String
   }],
-  // ========== NUEVOS CAMPOS ==========
   tracking: {
     status: {
       type: String,
@@ -143,37 +127,18 @@ const orderSchema = new mongoose.Schema({
       default: 'pending'
     },
     updates: [{
-      status: {
-        type: String,
-        enum: ['pending', 'accepted', 'in_progress', 'completed', 'cancelled'],
-        required: true
-      },
-      location: {
-        coordinates: [Number],
-        address: String
-      },
-      timestamp: {
-        type: Date,
-        default: Date.now
-      },
+      status: String,
+      location: { coordinates: [Number] },
+      timestamp: { type: Date, default: Date.now },
       note: String,
-      updatedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-      }
+      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
     }],
     currentLocation: {
       coordinates: [Number],
       updatedAt: Date
     },
-    estimatedTime: {
-      type: Number,
-      default: null
-    },
-    distanceRemaining: {
-      type: Number,
-      default: null
-    }
+    estimatedTime: { type: Number, default: null },
+    distanceRemaining: { type: Number, default: null }
   },
   notifications: [{
     type: {
@@ -181,38 +146,19 @@ const orderSchema = new mongoose.Schema({
       enum: ['order_created', 'order_accepted', 'order_in_progress', 'order_completed', 'order_cancelled', 'message', 'location_update']
     },
     message: String,
-    sentTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    read: {
-      type: Boolean,
-      default: false
-    },
+    sentTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    read: { type: Boolean, default: false },
     readAt: Date,
-    sentAt: {
-      type: Date,
-      default: Date.now
-    }
+    sentAt: { type: Date, default: Date.now }
   }],
   rating: {
     clientRating: {
-      score: {
-        type: Number,
-        min: 1,
-        max: 5,
-        default: null
-      },
+      score: { type: Number, min: 1, max: 5, default: null },
       comment: String,
       ratedAt: Date
     },
     mandaditoRating: {
-      score: {
-        type: Number,
-        min: 1,
-        max: 5,
-        default: null
-      },
+      score: { type: Number, min: 1, max: 5, default: null },
       comment: String,
       ratedAt: Date
     }
@@ -221,15 +167,13 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Índices
+// ÍNDICES
 orderSchema.index({ clientId: 1, status: 1 });
 orderSchema.index({ mandaditoId: 1, status: 1 });
 orderSchema.index({ voucherCode: 1 });
-orderSchema.index({ pickupLocation: '2dsphere' });
-orderSchema.index({ deliveryLocation: '2dsphere' });
 orderSchema.index({ createdAt: -1 });
-orderSchema.index({ 'tracking.currentLocation': '2dsphere' });
 
+// PRE-SAVE: Generar voucherCode
 orderSchema.pre('save', function(next) {
   if (!this.voucherCode) {
     const timestamp = Date.now().toString(36).toUpperCase();
@@ -244,7 +188,7 @@ orderSchema.pre('save', function(next) {
       note: `Estado cambiado a ${this.status}`
     });
     
-    // Actualizar tracking
+    if (!this.tracking) this.tracking = { updates: [] };
     this.tracking.status = this.status;
     this.tracking.updates.push({
       status: this.status,
@@ -256,26 +200,31 @@ orderSchema.pre('save', function(next) {
   next();
 });
 
-orderSchema.methods.canClientCancel = function() {
-  return this.status === ORDER_STATUS.PENDING || 
-         this.status === ORDER_STATUS.ACCEPTED;
-};
-
-orderSchema.methods.canMandaditoComplete = function() {
-  return this.status === ORDER_STATUS.ACCEPTED || 
-         this.status === ORDER_STATUS.IN_PROGRESS;
+// MÉTODOS
+orderSchema.methods.addNotification = async function(type, message, userId) {
+  if (!this.notifications) this.notifications = [];
+  this.notifications.push({
+    type,
+    message,
+    sentTo: userId,
+    sentAt: new Date(),
+    read: false
+  });
+  return this.save();
 };
 
 orderSchema.methods.addTrackingUpdate = async function(status, location, note) {
+  if (!this.tracking) this.tracking = { updates: [] };
   this.tracking.status = status;
   this.tracking.updates.push({
     status,
     location: location || this.tracking.currentLocation,
     timestamp: new Date(),
-    note: note || `Estado: ${status}`
+    note: note || `Estado: ${status}`,
+    updatedBy: this.mandaditoId || this.clientId
   });
   
-  if (location) {
+  if (location && location.coordinates) {
     this.tracking.currentLocation = {
       coordinates: location.coordinates,
       updatedAt: new Date()
@@ -285,14 +234,12 @@ orderSchema.methods.addTrackingUpdate = async function(status, location, note) {
   return this.save();
 };
 
-orderSchema.methods.addNotification = async function(type, message, userId) {
-  this.notifications.push({
-    type,
-    message,
-    sentTo: userId,
-    sentAt: new Date()
-  });
-  return this.save();
+orderSchema.methods.canClientCancel = function() {
+  return this.status === 'pending' || this.status === 'accepted';
+};
+
+orderSchema.methods.canMandaditoComplete = function() {
+  return this.status === 'accepted' || this.status === 'in_progress';
 };
 
 module.exports = mongoose.model('Order', orderSchema);

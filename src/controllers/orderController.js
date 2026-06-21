@@ -1,4 +1,3 @@
-// src/controllers/orderController.js
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Client = require('../models/Client');
@@ -7,7 +6,9 @@ const Business = require('../models/Business');
 const Chat = require('../models/Chat');
 const { calculateDistance, calculatePrice } = require('../utils/distanceCalculator');
 
-// Crear mandado público
+// ============================================
+// CREAR MANDADO PÚBLICO
+// ============================================
 exports.createPublicOrder = async (req, res) => {
   try {
     const clientId = req.userId;
@@ -19,6 +20,16 @@ exports.createPublicOrder = async (req, res) => {
       deliveryLocation,
       businessId
     } = req.body;
+
+    console.log('📝 Creando mandado público:', { description, pickupAddress, deliveryAddress });
+
+    // Validar coordenadas
+    if (!pickupLocation?.coordinates || !deliveryLocation?.coordinates) {
+      return res.status(400).json({
+        success: false,
+        message: 'Las coordenadas de origen y destino son requeridas'
+      });
+    }
 
     const distance = calculateDistance(
       pickupLocation.coordinates,
@@ -38,7 +49,15 @@ exports.createPublicOrder = async (req, res) => {
       distance,
       amount,
       status: 'pending',
-      businessId: businessId || null
+      businessId: businessId || null,
+      tracking: {
+        status: 'pending',
+        updates: [{
+          status: 'pending',
+          timestamp: new Date(),
+          note: 'Mandado creado'
+        }]
+      }
     });
 
     await order.save();
@@ -62,9 +81,6 @@ exports.createPublicOrder = async (req, res) => {
     order.chatId = chat._id;
     await order.save();
 
-    // ===== NUEVO: Agregar notificación =====
-    await order.addNotification('order_created', 'Tu mandado fue creado exitosamente', clientId);
-
     // Emitir via Socket.io
     const io = req.app.get('io');
     if (io) {
@@ -84,15 +100,18 @@ exports.createPublicOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error creando mandado público:', error);
+    console.error('❌ Error creando mandado público:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al crear mandado'
+      message: 'Error al crear mandado',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-// Crear mandado asignado
+// ============================================
+// CREAR MANDADO ASIGNADO
+// ============================================
 exports.createAssignedOrder = async (req, res) => {
   try {
     const clientId = req.userId;
@@ -106,6 +125,15 @@ exports.createAssignedOrder = async (req, res) => {
       businessId
     } = req.body;
 
+    console.log('📝 Creando mandado asignado:', { description, mandaditoId });
+
+    if (!mandaditoId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debes seleccionar un mandadito'
+      });
+    }
+
     const mandadito = await User.findById(mandaditoId);
     if (!mandadito || mandadito.role !== 'mandadito' || !mandadito.isActive) {
       return res.status(404).json({
@@ -115,6 +143,13 @@ exports.createAssignedOrder = async (req, res) => {
     }
 
     const mandaditoProfile = await Mandadito.findOne({ userId: mandaditoId });
+    if (!mandaditoProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Perfil de mandadito no encontrado'
+      });
+    }
+
     if (mandaditoProfile.activeOrders.length >= mandaditoProfile.maxActiveOrders) {
       return res.status(400).json({
         success: false,
@@ -141,7 +176,15 @@ exports.createAssignedOrder = async (req, res) => {
       distance,
       amount,
       status: 'accepted',
-      businessId: businessId || null
+      businessId: businessId || null,
+      tracking: {
+        status: 'accepted',
+        updates: [{
+          status: 'accepted',
+          timestamp: new Date(),
+          note: 'Mandado asignado y aceptado'
+        }]
+      }
     });
 
     await order.save();
@@ -172,10 +215,6 @@ exports.createAssignedOrder = async (req, res) => {
     order.chatId = chat._id;
     await order.save();
 
-    // ===== NUEVO: Agregar notificaciones =====
-    await order.addNotification('order_created', 'Te han asignado un nuevo mandado', mandaditoId);
-    await order.addNotification('order_accepted', 'Tu mandado fue aceptado por un mandadito', clientId);
-
     // Emitir via Socket.io
     const io = req.app.get('io');
     if (io) {
@@ -199,21 +238,120 @@ exports.createAssignedOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error creando mandado asignado:', error);
+    console.error('❌ Error creando mandado asignado:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al crear mandado'
+      message: 'Error al crear mandado',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-// Aceptar mandado público (mandadito)
+// ============================================
+// OBTENER ÓRDENES DEL USUARIO
+// ============================================
+exports.getMyOrders = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { status, limit = 20, page = 1 } = req.query;
+
+    console.log('📋 Obteniendo órdenes para usuario:', userId);
+
+    const filter = {
+      $or: [
+        { clientId: userId },
+        { mandaditoId: userId }
+      ]
+    };
+
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [orders, total] = await Promise.all([
+      Order.find(filter)
+        .populate('clientId', 'firstName lastName email profilePhoto')
+        .populate('mandaditoId', 'firstName lastName email profilePhoto')
+        .populate('businessId', 'businessName profilePhoto')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      Order.countDocuments(filter)
+    ]);
+
+    console.log(`✅ Encontradas ${orders.length} órdenes`);
+
+    res.json({
+      success: true,
+      orders,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error obteniendo órdenes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener órdenes'
+    });
+  }
+};
+
+// ============================================
+// OBTENER ÓRDENES DISPONIBLES
+// ============================================
+exports.getAvailableOrders = async (req, res) => {
+  try {
+    console.log('📋 Obteniendo órdenes disponibles');
+
+    const orders = await Order.find({
+      status: 'pending',
+      type: 'public'
+    })
+    .populate('clientId', 'firstName lastName email phone profilePhoto')
+    .populate('businessId', 'businessName profilePhoto')
+    .sort({ createdAt: -1 });
+
+    console.log(`✅ Encontradas ${orders.length} órdenes disponibles`);
+
+    res.json({
+      success: true,
+      orders
+    });
+
+  } catch (error) {
+    console.error('❌ Error obteniendo órdenes disponibles:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener órdenes disponibles'
+    });
+  }
+};
+
+// ============================================
+// ACEPTAR MANDADO PÚBLICO
+// ============================================
 exports.acceptPublicOrder = async (req, res) => {
   try {
     const mandaditoId = req.userId;
     const { orderId } = req.params;
 
+    console.log('📝 Aceptando mandado:', orderId);
+
     const mandaditoProfile = await Mandadito.findOne({ userId: mandaditoId });
+    if (!mandaditoProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Perfil de mandadito no encontrado'
+      });
+    }
+
     if (mandaditoProfile.credits < 5) {
       return res.status(400).json({
         success: false,
@@ -255,11 +393,7 @@ exports.acceptPublicOrder = async (req, res) => {
       { mandaditoId }
     );
 
-    // ===== NUEVO: Agregar notificaciones =====
-    await order.addNotification('order_accepted', 'Tu mandado fue aceptado', order.clientId);
-    await order.addNotification('order_accepted', 'Aceptaste un nuevo mandado', mandaditoId);
-
-    // ===== NUEVO: Actualizar tracking =====
+    // Actualizar tracking
     await order.addTrackingUpdate('accepted', null, 'Mandado aceptado por mandadito');
 
     // Emitir via Socket.io
@@ -279,7 +413,7 @@ exports.acceptPublicOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error aceptando mandado:', error);
+    console.error('❌ Error aceptando mandado:', error);
     res.status(500).json({
       success: false,
       message: 'Error al aceptar mandado'
@@ -287,7 +421,9 @@ exports.acceptPublicOrder = async (req, res) => {
   }
 };
 
-// Completar mandado
+// ============================================
+// COMPLETAR MANDADO
+// ============================================
 exports.completeOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -301,7 +437,7 @@ exports.completeOrder = async (req, res) => {
       });
     }
 
-    if (order.mandaditoId.toString() !== userId && req.user.role !== 'admin') {
+    if (order.mandaditoId?.toString() !== userId && req.user?.role !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'No tienes permiso para completar este mandado'
@@ -312,11 +448,7 @@ exports.completeOrder = async (req, res) => {
     order.completedAt = new Date();
     await order.save();
 
-    // ===== NUEVO: Actualizar tracking =====
     await order.addTrackingUpdate('completed', null, 'Mandado completado');
-
-    // ===== NUEVO: Agregar notificación =====
-    await order.addNotification('order_completed', 'Tu mandado fue completado', order.clientId);
 
     const mandadito = await Mandadito.findOne({ userId: order.mandaditoId });
     if (mandadito) {
@@ -325,13 +457,9 @@ exports.completeOrder = async (req, res) => {
       );
       mandadito.earnings += order.amount;
       mandadito.totalDeliveries += 1;
-      
-      // ===== NUEVO: Actualizar estadísticas =====
-      await mandadito.updateStats(order.amount, order.distance);
       await mandadito.save();
     }
 
-    // Emitir via Socket.io
     const io = req.app.get('io');
     if (io) {
       io.to(`user_${order.clientId}`).emit('order_completed', {
@@ -346,7 +474,7 @@ exports.completeOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error completando mandado:', error);
+    console.error('❌ Error completando mandado:', error);
     res.status(500).json({
       success: false,
       message: 'Error al completar mandado'
@@ -354,7 +482,9 @@ exports.completeOrder = async (req, res) => {
   }
 };
 
-// Cancelar mandado (solo cliente)
+// ============================================
+// CANCELAR MANDADO
+// ============================================
 exports.cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -387,11 +517,7 @@ exports.cancelOrder = async (req, res) => {
     order.cancellationReason = reason || 'Cancelado por el cliente';
     await order.save();
 
-    // ===== NUEVO: Actualizar tracking =====
     await order.addTrackingUpdate('cancelled', null, `Cancelado: ${order.cancellationReason}`);
-
-    // ===== NUEVO: Agregar notificación =====
-    await order.addNotification('order_cancelled', `Tu mandado fue cancelado: ${order.cancellationReason}`, order.clientId);
 
     if (order.mandaditoId) {
       const mandadito = await Mandadito.findOne({ userId: order.mandaditoId });
@@ -400,11 +526,9 @@ exports.cancelOrder = async (req, res) => {
           id => id.toString() !== orderId
         );
         mandadito.credits += 5;
-        mandadito.stats.totalCancelled += 1;
         await mandadito.save();
       }
       
-      // Notificar al mandadito
       const io = req.app.get('io');
       if (io) {
         io.to(`user_${order.mandaditoId}`).emit('order_cancelled', {
@@ -420,7 +544,7 @@ exports.cancelOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error cancelando mandado:', error);
+    console.error('❌ Error cancelando mandado:', error);
     res.status(500).json({
       success: false,
       message: 'Error al cancelar mandado'
@@ -428,7 +552,9 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
-// Solicitar devolución de créditos
+// ============================================
+// SOLICITAR DEVOLUCIÓN DE CRÉDITOS
+// ============================================
 exports.requestCreditRefund = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -442,7 +568,7 @@ exports.requestCreditRefund = async (req, res) => {
       });
     }
 
-    if (order.mandaditoId.toString() !== userId) {
+    if (order.mandaditoId?.toString() !== userId) {
       return res.status(403).json({
         success: false,
         message: 'No autorizado'
@@ -467,9 +593,6 @@ exports.requestCreditRefund = async (req, res) => {
     order.creditRefundStatus = 'pending';
     await order.save();
 
-    // ===== NUEVO: Agregar notificación =====
-    await order.addNotification('order_created', 'Solicitud de devolución de créditos enviada', userId);
-
     res.json({
       success: true,
       message: 'Solicitud de devolución enviada',
@@ -477,7 +600,7 @@ exports.requestCreditRefund = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error solicitando devolución:', error);
+    console.error('❌ Error solicitando devolución:', error);
     res.status(500).json({
       success: false,
       message: 'Error al solicitar devolución'
@@ -485,7 +608,9 @@ exports.requestCreditRefund = async (req, res) => {
   }
 };
 
-// ===== NUEVO: Actualizar ubicación de mandado =====
+// ============================================
+// ACTUALIZAR UBICACIÓN
+// ============================================
 exports.updateOrderLocation = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -500,7 +625,7 @@ exports.updateOrderLocation = async (req, res) => {
       });
     }
 
-    if (order.mandaditoId.toString() !== userId) {
+    if (order.mandaditoId?.toString() !== userId) {
       return res.status(403).json({
         success: false,
         message: 'No autorizado'
@@ -513,7 +638,6 @@ exports.updateOrderLocation = async (req, res) => {
       'Ubicación actualizada'
     );
 
-    // Emitir via Socket.io
     const io = req.app.get('io');
     if (io) {
       io.to(`user_${order.clientId}`).emit('order_location_update', {
@@ -530,7 +654,7 @@ exports.updateOrderLocation = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error actualizando ubicación:', error);
+    console.error('❌ Error actualizando ubicación:', error);
     res.status(500).json({
       success: false,
       message: 'Error al actualizar ubicación'
@@ -538,7 +662,9 @@ exports.updateOrderLocation = async (req, res) => {
   }
 };
 
-// ===== NUEVO: Calificar mandado =====
+// ============================================
+// CALIFICAR MANDADO
+// ============================================
 exports.rateOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -566,7 +692,7 @@ exports.rateOrder = async (req, res) => {
         comment: comment || '',
         ratedAt: new Date()
       };
-    } else if (role === 'mandadito' && order.mandaditoId.toString() === userId) {
+    } else if (role === 'mandadito' && order.mandaditoId?.toString() === userId) {
       order.rating.mandaditoRating = {
         score: rating,
         comment: comment || '',
@@ -581,21 +707,6 @@ exports.rateOrder = async (req, res) => {
 
     await order.save();
 
-    // Actualizar rating del mandadito
-    if (role === 'client') {
-      const mandadito = await Mandadito.findOne({ userId: order.mandaditoId });
-      if (mandadito) {
-        const allRatings = await Order.find({
-          mandaditoId: order.mandaditoId,
-          'rating.clientRating.score': { $ne: null }
-        });
-        
-        const total = allRatings.reduce((sum, o) => sum + o.rating.clientRating.score, 0);
-        mandadito.rating = total / allRatings.length;
-        await mandadito.save();
-      }
-    }
-
     res.json({
       success: true,
       message: 'Calificación enviada',
@@ -603,7 +714,7 @@ exports.rateOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error calificando mandado:', error);
+    console.error('❌ Error calificando mandado:', error);
     res.status(500).json({
       success: false,
       message: 'Error al calificar mandado'
@@ -611,7 +722,9 @@ exports.rateOrder = async (req, res) => {
   }
 };
 
-// ===== NUEVO: Obtener seguimiento de mandado =====
+// ============================================
+// OBTENER SEGUIMIENTO
+// ============================================
 exports.getOrderTracking = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -628,9 +741,8 @@ exports.getOrderTracking = async (req, res) => {
       });
     }
 
-    // Verificar acceso
-    const isClient = order.clientId._id.toString() === userId;
-    const isMandadito = order.mandaditoId && order.mandaditoId._id.toString() === userId;
+    const isClient = order.clientId?._id?.toString() === userId;
+    const isMandadito = order.mandaditoId?._id?.toString() === userId;
     const isAdmin = req.userRole === 'admin';
 
     if (!isClient && !isMandadito && !isAdmin) {
@@ -643,11 +755,11 @@ exports.getOrderTracking = async (req, res) => {
     res.json({
       success: true,
       tracking: {
-        status: order.tracking.status,
-        updates: order.tracking.updates,
-        currentLocation: order.tracking.currentLocation,
-        estimatedTime: order.tracking.estimatedTime,
-        distanceRemaining: order.tracking.distanceRemaining
+        status: order.tracking?.status || order.status,
+        updates: order.tracking?.updates || [],
+        currentLocation: order.tracking?.currentLocation || null,
+        estimatedTime: order.tracking?.estimatedTime || null,
+        distanceRemaining: order.tracking?.distanceRemaining || null
       },
       order: {
         id: order._id,
@@ -655,12 +767,13 @@ exports.getOrderTracking = async (req, res) => {
         description: order.description,
         pickupAddress: order.pickupAddress,
         deliveryAddress: order.deliveryAddress,
-        amount: order.amount
+        amount: order.amount,
+        status: order.status
       }
     });
 
   } catch (error) {
-    console.error('Error obteniendo seguimiento:', error);
+    console.error('❌ Error obteniendo seguimiento:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener seguimiento'
