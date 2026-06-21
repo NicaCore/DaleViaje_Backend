@@ -5,11 +5,10 @@ const Business = require('../models/Business');
 const jwt = require('jsonwebtoken');
 const { getImageUrl } = require('../middleware/upload');
 
-// Registrar usuario - VERSIÓN CORREGIDA
+// Registrar usuario - CORREGIDO
 exports.register = async (req, res) => {
   try {
     console.log('📝 Body recibido:', req.body);
-    console.log('📎 Files recibidos:', req.files ? Object.keys(req.files) : 'ninguno');
     
     const { 
       firstName, lastName, email, password, phone, 
@@ -20,7 +19,7 @@ exports.register = async (req, res) => {
     if (!firstName || !lastName || !email || !password || !phone || !role) {
       return res.status(400).json({
         success: false,
-        message: 'Todos los campos son obligatorios: firstName, lastName, email, password, phone, role'
+        message: 'Todos los campos son obligatorios'
       });
     }
 
@@ -33,7 +32,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Datos base del usuario
+    // ✅ Datos base del usuario con ubicación por defecto
     const userData = {
       firstName,
       lastName,
@@ -45,17 +44,22 @@ exports.register = async (req, res) => {
       termsAccepted: termsAccepted === 'true' || termsAccepted === true || false,
       locationAccess: false,
       notificationsEnabled: true,
-      backgroundMode: true
+      backgroundMode: true,
+      location: {
+        type: 'Point',
+        coordinates: [-85.0, 12.0]
+      }
     };
 
-    // ✅ CORREGIDO: Verificar si hay archivo de perfil
-    if (req.file) {
-      userData.profilePhoto = getImageUrl(req.file.filename, 'profiles');
-    } else if (req.files && req.files.profilePhoto) {
-      // Si viene en req.files (multer con fields)
-      const file = req.files.profilePhoto;
-      if (file && file[0]) {
-        userData.profilePhoto = getImageUrl(file[0].filename, 'profiles');
+    // ✅ SOLO CLIENTE: foto de perfil es OPCIONAL
+    if (role === 'client') {
+      if (req.file) {
+        userData.profilePhoto = getImageUrl(req.file.filename, 'profiles');
+      } else if (req.files && req.files.profilePhoto) {
+        const file = req.files.profilePhoto;
+        if (file && file[0]) {
+          userData.profilePhoto = getImageUrl(file[0].filename, 'profiles');
+        }
       }
     }
 
@@ -93,7 +97,7 @@ exports.register = async (req, res) => {
         console.warn('⚠️ Error parseando datos del mandadito:', e.message);
       }
       
-      // Verificar documentos requeridos
+      // ✅ Mandadito: Verificar documentos requeridos
       const hasVehiclePhoto = req.files && req.files.vehiclePhoto && req.files.vehiclePhoto[0];
       const hasLicensePhoto = req.files && req.files.licensePhoto && req.files.licensePhoto[0];
       const hasCedulaPhoto = req.files && req.files.cedulaPhoto && req.files.cedulaPhoto[0];
@@ -106,8 +110,15 @@ exports.register = async (req, res) => {
         });
       }
 
+      // ✅ Mandadito: foto de perfil REQUERIDA
+      let profilePhotoUrl = null;
+      if (req.files && req.files.profilePhoto && req.files.profilePhoto[0]) {
+        profilePhotoUrl = getImageUrl(req.files.profilePhoto[0].filename, 'profiles');
+      }
+
       profile = new Mandadito({
         userId: user._id,
+        profilePhoto: profilePhotoUrl,
         workDays,
         restDays,
         schedule,
@@ -129,15 +140,15 @@ exports.register = async (req, res) => {
       let businessType = additionalData.businessType || '';
       let description = additionalData.description || '';
       let address = additionalData.address || '';
-      let location = { coordinates: [0, 0] };
+      let location = { coordinates: [-85.0, 12.0] };
 
       try {
-        location = additionalData.location ? JSON.parse(additionalData.location) : { coordinates: [0, 0] };
+        location = additionalData.location ? JSON.parse(additionalData.location) : { coordinates: [-85.0, 12.0] };
       } catch (e) {
         console.warn('⚠️ Error parseando ubicación del negocio:', e.message);
       }
       
-      // Verificar documentos requeridos
+      // ✅ Negocio: Verificar documentos requeridos
       const hasBusinessPhoto = req.files && req.files.businessPhoto && req.files.businessPhoto[0];
       const hasPaymentReceipt = req.files && req.files.paymentReceipt && req.files.paymentReceipt[0];
 
@@ -183,7 +194,6 @@ exports.register = async (req, res) => {
         message: 'Realiza el pago de $4 USD a nuestra billetera móvil y sube el comprobante para activar tu negocio.'
       };
 
-      // Generar token
       const token = jwt.sign(
         { id: user._id, role: user.role },
         process.env.JWT_SECRET,
@@ -192,7 +202,7 @@ exports.register = async (req, res) => {
 
       return res.status(201).json({
         success: true,
-        message: '✅ Negocio registrado exitosamente. Para activar tu cuenta, realiza el pago.',
+        message: '✅ Negocio registrado exitosamente.',
         paymentInfo,
         token,
         user: {
@@ -210,7 +220,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Generar token para cliente o mandadito
+    // Generar token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
@@ -239,7 +249,6 @@ exports.register = async (req, res) => {
     console.error('❌ Error en registro:', error);
     console.error('📋 Stack:', error.stack);
     
-    // Si hay un error de validación de mongoose
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(e => e.message);
       return res.status(400).json({
@@ -257,7 +266,7 @@ exports.register = async (req, res) => {
   }
 };
 
-// Iniciar sesión - VERSIÓN CORREGIDA
+// Iniciar sesión - CORREGIDO
 exports.login = async (req, res) => {
   try {
     console.log('🔐 Intento de login:', req.body.email);
@@ -330,7 +339,7 @@ exports.login = async (req, res) => {
         if (!profile.isApproved) {
           return res.status(403).json({
             success: false,
-            message: 'Tu cuenta de negocio está pendiente de aprobación. Realiza el pago para activarla.'
+            message: 'Tu cuenta de negocio está pendiente de aprobación.'
           });
         }
         if (!profile.isActive) {
@@ -383,7 +392,7 @@ exports.login = async (req, res) => {
   }
 };
 
-// Actualizar perfil - VERSIÓN CORREGIDA
+// Actualizar perfil
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.userId;

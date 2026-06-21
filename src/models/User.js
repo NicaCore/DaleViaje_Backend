@@ -1,4 +1,4 @@
-// src/models/User.js - VERSIÓN DEFINITIVA CORREGIDA
+// src/models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { ROLES } = require('../config/constants');
@@ -54,7 +54,7 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  // ✅ CORREGIDO: location con coordenadas válidas de Juigalpa
+  // ✅ CORREGIDO: location con coordenadas de Juigalpa
   location: {
     type: {
       type: String,
@@ -63,7 +63,7 @@ const userSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number],
-      default: [-85.0, 12.0] // Juigalpa, Chontales
+      default: [-85.0, 12.0]
     }
   },
   profilePhoto: {
@@ -121,7 +121,7 @@ const userSchema = new mongoose.Schema({
       default: null
     }
   }],
-  // ✅ CORREGIDO: lastActiveLocation sin índice automático
+  // ✅ CORREGIDO: lastActiveLocation con null
   lastActiveLocation: {
     coordinates: {
       type: [Number],
@@ -136,7 +136,7 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// ✅ CORREGIDO: Índices con sparse: true para evitar errores
+// ✅ ÍNDICES CORRECTOS
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ location: '2dsphere' }, { sparse: true });

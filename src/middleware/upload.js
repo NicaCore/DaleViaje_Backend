@@ -1,3 +1,4 @@
+// src/middleware/upload.js
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -73,32 +74,42 @@ const uploadReceipt = upload.single('paymentReceipt');
 const uploadChatImage = upload.array('chatImage', 2);
 const uploadCatalogImages = upload.array('catalogImages', 4);
 
-// Middleware para manejar errores de subida
-const handleUploadError = (err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'FILE_TOO_LARGE') {
+// ✅ NUEVO: Middleware para registro que permite foto opcional para clientes
+const uploadRegister = (req, res, next) => {
+  // Usamos upload.fields() para manejar múltiples archivos
+  upload.fields([
+    { name: 'profilePhoto', maxCount: 1 },
+    { name: 'vehiclePhoto', maxCount: 1 },
+    { name: 'licensePhoto', maxCount: 1 },
+    { name: 'cedulaPhoto', maxCount: 1 },
+    { name: 'businessPhoto', maxCount: 1 },
+    { name: 'paymentReceipt', maxCount: 1 }
+  ])(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'FILE_TOO_LARGE') {
+        return res.status(400).json({
+          success: false,
+          message: 'El archivo es demasiado grande. Máximo 5MB'
+        });
+      }
       return res.status(400).json({
         success: false,
-        message: 'El archivo es demasiado grande. Máximo 5MB'
+        message: `Error de subida: ${err.message}`
+      });
+    } else if (err) {
+      return res.status(400).json({
+        success: false,
+        message: err.message
       });
     }
-    return res.status(400).json({
-      success: false,
-      message: `Error de subida: ${err.message}`
-    });
-  } else if (err) {
-    return res.status(400).json({
-      success: false,
-      message: err.message
-    });
-  }
-  next();
+    next();
+  });
 };
 
 // Función para obtener URL de imagen
 const getImageUrl = (filename, folder = '') => {
   if (!filename) return null;
-  const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+  const baseUrl = process.env.BASE_URL || 'https://daleviaje-backend-wuk5.onrender.com';
   return `${baseUrl}/uploads/${folder}/${filename}`;
 };
 
@@ -112,6 +123,7 @@ module.exports = {
   uploadReceipt,
   uploadChatImage,
   uploadCatalogImages,
-  handleUploadError,
+  uploadRegister,
+  handleUploadError: uploadRegister,
   getImageUrl
 };
