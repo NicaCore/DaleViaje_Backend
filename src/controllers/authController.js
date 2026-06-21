@@ -5,14 +5,26 @@ const Business = require('../models/Business');
 const jwt = require('jsonwebtoken');
 const { getImageUrl } = require('../middleware/upload');
 
-// Registrar usuario
+// Registrar usuario - VERSIÓN CORREGIDA
 exports.register = async (req, res) => {
   try {
+    console.log('📝 Body recibido:', req.body);
+    console.log('📎 Files recibidos:', req.files ? Object.keys(req.files) : 'ninguno');
+    
     const { 
       firstName, lastName, email, password, phone, 
       role, termsAccepted, ...additionalData 
     } = req.body;
 
+    // Validar campos obligatorios
+    if (!firstName || !lastName || !email || !password || !phone || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Todos los campos son obligatorios: firstName, lastName, email, password, phone, role'
+      });
+    }
+
+    // Verificar si el email ya existe
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -21,6 +33,7 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Datos base del usuario
     const userData = {
       firstName,
       lastName,
@@ -29,45 +42,76 @@ exports.register = async (req, res) => {
       phone,
       role,
       department: 'Juigalpa, Chontales',
-      termsAccepted: termsAccepted || false,
+      termsAccepted: termsAccepted === 'true' || termsAccepted === true || false,
       locationAccess: false,
       notificationsEnabled: true,
       backgroundMode: true
     };
 
-    // Si hay foto de perfil
+    // ✅ CORREGIDO: Verificar si hay archivo de perfil
     if (req.file) {
       userData.profilePhoto = getImageUrl(req.file.filename, 'profiles');
+    } else if (req.files && req.files.profilePhoto) {
+      // Si viene en req.files (multer con fields)
+      const file = req.files.profilePhoto;
+      if (file && file[0]) {
+        userData.profilePhoto = getImageUrl(file[0].filename, 'profiles');
+      }
     }
+
+    console.log('👤 Datos de usuario a guardar:', { ...userData, password: '******' });
 
     const user = new User(userData);
     await user.save();
+    console.log('✅ Usuario guardado:', user._id);
 
     let profile = null;
     let profileData = {};
 
+    // ========== CLIENTE ==========
     if (role === 'client') {
       profile = new Client({ userId: user._id });
       await profile.save();
       profileData = profile;
+      console.log('✅ Perfil de cliente guardado');
     } 
+    
+    // ========== MANDADITO ==========
     else if (role === 'mandadito') {
-      const { workDays, restDays, schedule, lunchTime } = additionalData;
+      // Parsear datos adicionales
+      let workDays = [];
+      let restDays = [];
+      let schedule = { start: '08:00', end: '18:00' };
+      let lunchTime = { start: '12:00', end: '13:00' };
+
+      try {
+        workDays = additionalData.workDays ? JSON.parse(additionalData.workDays) : [];
+        restDays = additionalData.restDays ? JSON.parse(additionalData.restDays) : [];
+        schedule = additionalData.schedule ? JSON.parse(additionalData.schedule) : { start: '08:00', end: '18:00' };
+        lunchTime = additionalData.lunchTime ? JSON.parse(additionalData.lunchTime) : { start: '12:00', end: '13:00' };
+      } catch (e) {
+        console.warn('⚠️ Error parseando datos del mandadito:', e.message);
+      }
       
-      if (!req.files || !req.files.vehiclePhoto || !req.files.licensePhoto || !req.files.cedulaPhoto) {
+      // Verificar documentos requeridos
+      const hasVehiclePhoto = req.files && req.files.vehiclePhoto && req.files.vehiclePhoto[0];
+      const hasLicensePhoto = req.files && req.files.licensePhoto && req.files.licensePhoto[0];
+      const hasCedulaPhoto = req.files && req.files.cedulaPhoto && req.files.cedulaPhoto[0];
+
+      if (!hasVehiclePhoto || !hasLicensePhoto || !hasCedulaPhoto) {
         await User.findByIdAndDelete(user._id);
         return res.status(400).json({
           success: false,
-          message: 'Faltan documentos requeridos para registro como mandadito'
+          message: 'Faltan documentos requeridos para registro como mandadito: vehiclePhoto, licensePhoto, cedulaPhoto'
         });
       }
 
       profile = new Mandadito({
         userId: user._id,
-        workDays: workDays ? JSON.parse(workDays) : [],
-        restDays: restDays ? JSON.parse(restDays) : [],
-        schedule: schedule ? JSON.parse(schedule) : { start: '08:00', end: '18:00' },
-        lunchTime: lunchTime ? JSON.parse(lunchTime) : { start: '12:00', end: '13:00' },
+        workDays,
+        restDays,
+        schedule,
+        lunchTime,
         vehiclePhoto: getImageUrl(req.files.vehiclePhoto[0].filename, 'vehicles'),
         licensePhoto: getImageUrl(req.files.licensePhoto[0].filename, 'licenses'),
         cedulaPhoto: getImageUrl(req.files.cedulaPhoto[0].filename, 'ids'),
@@ -76,19 +120,36 @@ exports.register = async (req, res) => {
       });
       await profile.save();
       profileData = profile;
+      console.log('✅ Perfil de mandadito guardado');
     } 
+    
+    // ========== NEGOCIO ==========
     else if (role === 'business') {
-      const { businessName, businessType, description, address, location } = additionalData;
+      let businessName = additionalData.businessName || '';
+      let businessType = additionalData.businessType || '';
+      let description = additionalData.description || '';
+      let address = additionalData.address || '';
+      let location = { coordinates: [0, 0] };
+
+      try {
+        location = additionalData.location ? JSON.parse(additionalData.location) : { coordinates: [0, 0] };
+      } catch (e) {
+        console.warn('⚠️ Error parseando ubicación del negocio:', e.message);
+      }
       
-      if (!req.files || !req.files.businessPhoto || !req.files.paymentReceipt) {
+      // Verificar documentos requeridos
+      const hasBusinessPhoto = req.files && req.files.businessPhoto && req.files.businessPhoto[0];
+      const hasPaymentReceipt = req.files && req.files.paymentReceipt && req.files.paymentReceipt[0];
+
+      if (!hasBusinessPhoto || !hasPaymentReceipt) {
         await User.findByIdAndDelete(user._id);
         return res.status(400).json({
           success: false,
-          message: 'Faltan documentos requeridos para registro como negocio'
+          message: 'Faltan documentos requeridos para registro como negocio: businessPhoto, paymentReceipt'
         });
       }
 
-      // NUEVO: Generar referencia de pago única para el negocio
+      // Generar referencia de pago
       const timestamp = Date.now().toString(36).toUpperCase();
       const random = Math.random().toString(36).substring(2, 8).toUpperCase();
       const paymentReference = `NEG-${timestamp}-${random}`;
@@ -99,17 +160,18 @@ exports.register = async (req, res) => {
         businessType,
         description,
         address,
-        location: JSON.parse(location),
+        location,
         profilePhoto: getImageUrl(req.files.businessPhoto[0].filename, 'businesses'),
         paymentReceipt: getImageUrl(req.files.paymentReceipt[0].filename, 'receipts'),
         paymentStatus: 'pending',
         isApproved: false,
-        paymentReference: paymentReference // NUEVO: Guardar referencia
+        paymentReference
       });
       await profile.save();
       profileData = profile;
+      console.log('✅ Perfil de negocio guardado');
 
-      // NUEVO: Información de pago para mostrar al negocio
+      // Información de pago
       const paymentInfo = {
         phone: process.env.ADMIN_PHONE || '88888888',
         bank: process.env.ADMIN_BANK_NAME || 'BANPRO',
@@ -121,16 +183,18 @@ exports.register = async (req, res) => {
         message: 'Realiza el pago de $4 USD a nuestra billetera móvil y sube el comprobante para activar tu negocio.'
       };
 
-      // NUEVO: Respuesta con datos de pago
+      // Generar token
+      const token = jwt.sign(
+        { id: user._id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRE || '7d' }
+      );
+
       return res.status(201).json({
         success: true,
         message: '✅ Negocio registrado exitosamente. Para activar tu cuenta, realiza el pago.',
-        paymentInfo: paymentInfo,
-        token: jwt.sign(
-          { id: user._id, role: user.role },
-          process.env.JWT_SECRET,
-          { expiresIn: process.env.JWT_EXPIRE || '7d' }
-        ),
+        paymentInfo,
+        token,
         user: {
           id: user._id,
           firstName: user.firstName,
@@ -146,6 +210,7 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Generar token para cliente o mandadito
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
@@ -171,7 +236,19 @@ exports.register = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error en registro:', error);
+    console.error('❌ Error en registro:', error);
+    console.error('📋 Stack:', error.stack);
+    
+    // Si hay un error de validación de mongoose
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Error de validación',
+        errors
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Error al registrar usuario',
@@ -180,10 +257,19 @@ exports.register = async (req, res) => {
   }
 };
 
-// Iniciar sesión
+// Iniciar sesión - VERSIÓN CORREGIDA
 exports.login = async (req, res) => {
   try {
+    console.log('🔐 Intento de login:', req.body.email);
+
     const { email, password, role } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email y contraseña son requeridos'
+      });
+    }
 
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
@@ -265,6 +351,8 @@ exports.login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 
+    console.log('✅ Login exitoso:', user.email);
+
     res.json({
       success: true,
       token,
@@ -285,15 +373,17 @@ exports.login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error en login:', error);
+    console.error('❌ Error en login:', error);
+    console.error('📋 Stack:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Error al iniciar sesión'
+      message: 'Error al iniciar sesión',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-// Actualizar perfil
+// Actualizar perfil - VERSIÓN CORREGIDA
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.userId;
@@ -339,7 +429,7 @@ exports.updateProfile = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error actualizando perfil:', error);
+    console.error('❌ Error actualizando perfil:', error);
     res.status(500).json({
       success: false,
       message: 'Error al actualizar perfil'
@@ -403,7 +493,7 @@ exports.updateLocation = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error actualizando ubicación:', error);
+    console.error('❌ Error actualizando ubicación:', error);
     res.status(500).json({
       success: false,
       message: 'Error al actualizar ubicación'
@@ -419,7 +509,7 @@ exports.logout = async (req, res) => {
       message: 'Sesión cerrada exitosamente'
     });
   } catch (error) {
-    console.error('Error en logout:', error);
+    console.error('❌ Error en logout:', error);
     res.status(500).json({
       success: false,
       message: 'Error al cerrar sesión'
