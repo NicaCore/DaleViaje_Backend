@@ -62,7 +62,7 @@ const validateLogin = [
   validateResult
 ];
 
-// ✅ VALIDACIÓN CORREGIDA - Acepta tanto array como objeto con lat/lng
+// ✅ VALIDACIÓN CORREGIDA - AHORA FUNCIONA
 const validateOrder = [
   body('description')
     .notEmpty().withMessage('La descripción es requerida')
@@ -71,32 +71,33 @@ const validateOrder = [
   body('pickupAddress')
     .notEmpty().withMessage('La dirección de recogida es requerida'),
 
-  // ✅ CORREGIDO: Validación flexible para coordenadas
+  // ✅ CORREGIDO: Validar que el objeto existe y tiene coordinates como array
   body('pickupLocation')
+    .exists().withMessage('La ubicación de recogida es requerida')
     .custom((value) => {
-      // Si tiene coordinates (array) o lat/lng (objeto)
-      if (value?.coordinates && Array.isArray(value.coordinates) && value.coordinates.length === 2) {
-        return true;
+      if (!value.coordinates || !Array.isArray(value.coordinates) || value.coordinates.length !== 2) {
+        throw new Error('pickupLocation.coordinates debe ser un array de 2 números [lng, lat]');
       }
-      if (value?.lat !== undefined && value?.lng !== undefined) {
-        return true;
+      if (!value.coordinates.every(v => typeof v === 'number')) {
+        throw new Error('Las coordenadas deben ser números');
       }
-      throw new Error('Coordenadas de recogida inválidas');
+      return true;
     }),
 
   body('deliveryAddress')
     .notEmpty().withMessage('La dirección de entrega es requerida'),
 
-  // ✅ CORREGIDO: Validación flexible para coordenadas
+  // ✅ CORREGIDO: Validar que el objeto existe y tiene coordinates como array
   body('deliveryLocation')
+    .exists().withMessage('La ubicación de entrega es requerida')
     .custom((value) => {
-      if (value?.coordinates && Array.isArray(value.coordinates) && value.coordinates.length === 2) {
-        return true;
+      if (!value.coordinates || !Array.isArray(value.coordinates) || value.coordinates.length !== 2) {
+        throw new Error('deliveryLocation.coordinates debe ser un array de 2 números [lng, lat]');
       }
-      if (value?.lat !== undefined && value?.lng !== undefined) {
-        return true;
+      if (!value.coordinates.every(v => typeof v === 'number')) {
+        throw new Error('Las coordenadas deben ser números');
       }
-      throw new Error('Coordenadas de entrega inválidas');
+      return true;
     }),
 
   validateResult
