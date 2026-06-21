@@ -1,3 +1,4 @@
+// src/middleware/validation.js - VERSIÓN CORREGIDA
 const { body, validationResult } = require('express-validator');
 
 const validateResult = (req, res, next) => {
@@ -61,6 +62,7 @@ const validateLogin = [
   validateResult
 ];
 
+// ✅ VALIDACIÓN CORREGIDA - Acepta tanto array como objeto con lat/lng
 const validateOrder = [
   body('description')
     .notEmpty().withMessage('La descripción es requerida')
@@ -69,14 +71,33 @@ const validateOrder = [
   body('pickupAddress')
     .notEmpty().withMessage('La dirección de recogida es requerida'),
 
-  body('pickupLocation.coordinates')
-    .isArray({ min: 2, max: 2 }).withMessage('Coordenadas inválidas'),
+  // ✅ CORREGIDO: Validación flexible para coordenadas
+  body('pickupLocation')
+    .custom((value) => {
+      // Si tiene coordinates (array) o lat/lng (objeto)
+      if (value?.coordinates && Array.isArray(value.coordinates) && value.coordinates.length === 2) {
+        return true;
+      }
+      if (value?.lat !== undefined && value?.lng !== undefined) {
+        return true;
+      }
+      throw new Error('Coordenadas de recogida inválidas');
+    }),
 
   body('deliveryAddress')
     .notEmpty().withMessage('La dirección de entrega es requerida'),
 
-  body('deliveryLocation.coordinates')
-    .isArray({ min: 2, max: 2 }).withMessage('Coordenadas inválidas'),
+  // ✅ CORREGIDO: Validación flexible para coordenadas
+  body('deliveryLocation')
+    .custom((value) => {
+      if (value?.coordinates && Array.isArray(value.coordinates) && value.coordinates.length === 2) {
+        return true;
+      }
+      if (value?.lat !== undefined && value?.lng !== undefined) {
+        return true;
+      }
+      throw new Error('Coordenadas de entrega inválidas');
+    }),
 
   validateResult
 ];
