@@ -1,4 +1,3 @@
-// src/models/Order.js
 const mongoose = require('mongoose');
 const { ORDER_STATUS, ORDER_TYPES } = require('../config/constants');
 
@@ -33,14 +32,15 @@ const orderSchema = new mongoose.Schema({
     required: [true, 'La dirección de recogida es requerida']
   },
   pickupLocation: {
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point'
-    },
-    coordinates: {
-      type: [Number],
-      required: true
+    type: [Number],
+    required: true,
+    validate: {
+      validator: function(v) {
+        return Array.isArray(v) && v.length === 2 &&
+          typeof v[0] === 'number' && typeof v[1] === 'number' &&
+          !isNaN(v[0]) && !isNaN(v[1]);
+      },
+      message: 'pickupLocation debe ser un array de 2 números [longitud, latitud]'
     }
   },
   deliveryAddress: {
@@ -48,14 +48,15 @@ const orderSchema = new mongoose.Schema({
     required: [true, 'La dirección de entrega es requerida']
   },
   deliveryLocation: {
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point'
-    },
-    coordinates: {
-      type: [Number],
-      required: true
+    type: [Number],
+    required: true,
+    validate: {
+      validator: function(v) {
+        return Array.isArray(v) && v.length === 2 &&
+          typeof v[0] === 'number' && typeof v[1] === 'number' &&
+          !isNaN(v[0]) && !isNaN(v[1]);
+      },
+      message: 'deliveryLocation debe ser un array de 2 números [longitud, latitud]'
     }
   },
   distance: {
@@ -95,7 +96,6 @@ const orderSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  // ✅ CORREGIDO: Ahora acepta null
   creditRefundStatus: {
     type: String,
     enum: ['pending', 'approved', 'rejected', null],
@@ -174,14 +174,13 @@ orderSchema.index({ mandaditoId: 1, status: 1 });
 orderSchema.index({ voucherCode: 1 });
 orderSchema.index({ createdAt: -1 });
 
-// PRE-SAVE: Generar voucherCode
 orderSchema.pre('save', function(next) {
   if (!this.voucherCode) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
     this.voucherCode = `DV-${timestamp}-${random}`;
   }
-  
+
   if (this.isModified('status')) {
     if (!this.statusHistory) this.statusHistory = [];
     this.statusHistory.push({
@@ -189,7 +188,7 @@ orderSchema.pre('save', function(next) {
       date: new Date(),
       note: `Estado cambiado a ${this.status}`
     });
-    
+
     if (!this.tracking) this.tracking = { updates: [] };
     this.tracking.status = this.status;
     this.tracking.updates.push({
@@ -198,11 +197,10 @@ orderSchema.pre('save', function(next) {
       note: `Estado actualizado a ${this.status}`
     });
   }
-  
+
   next();
 });
 
-// MÉTODOS
 orderSchema.methods.addNotification = async function(type, message, userId) {
   if (!this.notifications) this.notifications = [];
   this.notifications.push({
@@ -225,14 +223,14 @@ orderSchema.methods.addTrackingUpdate = async function(status, location, note) {
     note: note || `Estado: ${status}`,
     updatedBy: this.mandaditoId || this.clientId
   });
-  
+
   if (location && location.coordinates) {
     this.tracking.currentLocation = {
       coordinates: location.coordinates,
       updatedAt: new Date()
     };
   }
-  
+
   return this.save();
 };
 

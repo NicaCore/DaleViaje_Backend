@@ -1,4 +1,3 @@
-// src/controllers/orderController.js - VERSIÓN DEFINITIVA
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Client = require('../models/Client');
@@ -8,7 +7,7 @@ const Chat = require('../models/Chat');
 const { calculateDistance, calculatePrice } = require('../utils/distanceCalculator');
 
 // ============================================
-// CREAR MANDADO PÚBLICO - DEFINITIVO
+// CREAR MANDADO PÚBLICO
 // ============================================
 exports.createPublicOrder = async (req, res) => {
   try {
@@ -22,40 +21,28 @@ exports.createPublicOrder = async (req, res) => {
       businessId
     } = req.body;
 
-    console.log('📝 Creando mandado:');
-    console.log('  pickupLocation:', JSON.stringify(pickupLocation));
-    console.log('  deliveryLocation:', JSON.stringify(deliveryLocation));
+    console.log('📝 Creando mandado público:');
 
-    // ✅ EXTRAER COORDENADAS DE CUALQUIER FORMATO
     let pickupCoords = null;
     let deliveryCoords = null;
 
-    // Formato 1: { coordinates: [lng, lat] }
     if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates) && pickupLocation.coordinates.length === 2) {
       pickupCoords = pickupLocation.coordinates.map(Number);
-    }
-    // Formato 2: { lat: x, lng: y }
-    else if (pickupLocation?.lat !== undefined && pickupLocation?.lng !== undefined) {
+    } else if (pickupLocation?.lat !== undefined && pickupLocation?.lng !== undefined) {
       pickupCoords = [Number(pickupLocation.lng), Number(pickupLocation.lat)];
-    }
-    // Formato 3: [lng, lat]
-    else if (Array.isArray(pickupLocation) && pickupLocation.length === 2) {
+    } else if (Array.isArray(pickupLocation) && pickupLocation.length === 2) {
       pickupCoords = pickupLocation.map(Number);
     }
 
     if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates) && deliveryLocation.coordinates.length === 2) {
       deliveryCoords = deliveryLocation.coordinates.map(Number);
-    }
-    else if (deliveryLocation?.lat !== undefined && deliveryLocation?.lng !== undefined) {
+    } else if (deliveryLocation?.lat !== undefined && deliveryLocation?.lng !== undefined) {
       deliveryCoords = [Number(deliveryLocation.lng), Number(deliveryLocation.lat)];
-    }
-    else if (Array.isArray(deliveryLocation) && deliveryLocation.length === 2) {
+    } else if (Array.isArray(deliveryLocation) && deliveryLocation.length === 2) {
       deliveryCoords = deliveryLocation.map(Number);
     }
 
-    // ✅ VALIDAR COORDENADAS
     if (!pickupCoords || pickupCoords.length !== 2 || isNaN(pickupCoords[0]) || isNaN(pickupCoords[1])) {
-      console.log('❌ pickupCoords inválido:', pickupCoords);
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de recogida inválidas. Debe ser [longitud, latitud]'
@@ -63,53 +50,35 @@ exports.createPublicOrder = async (req, res) => {
     }
 
     if (!deliveryCoords || deliveryCoords.length !== 2 || isNaN(deliveryCoords[0]) || isNaN(deliveryCoords[1])) {
-      console.log('❌ deliveryCoords inválido:', deliveryCoords);
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de entrega inválidas. Debe ser [longitud, latitud]'
       });
     }
 
-    console.log('  pickupCoords:', pickupCoords);
-    console.log('  deliveryCoords:', deliveryCoords);
-
     const distance = calculateDistance(pickupCoords, deliveryCoords);
     const amount = calculatePrice(distance);
 
-    console.log(`  Distancia: ${distance}km, Precio: C$${amount}`);
-
-    // ✅ CREAR ORDEN CON GeoJSON VÁLIDO
     const orderData = {
       clientId,
       type: 'public',
       description: description || 'Mandado sin descripción',
       pickupAddress: pickupAddress || 'Dirección no especificada',
-      pickupLocation: {
-        type: 'Point',
-        coordinates: pickupCoords
-      },
+      pickupLocation: pickupCoords,
       deliveryAddress: deliveryAddress || 'Dirección no especificada',
-      deliveryLocation: {
-        type: 'Point',
-        coordinates: deliveryCoords
-      },
+      deliveryLocation: deliveryCoords,
       distance: distance,
       amount: amount,
       status: 'pending',
       businessId: businessId || null
     };
 
-    console.log('📦 Guardando orden con pickupLocation:', JSON.stringify(orderData.pickupLocation));
-    console.log('📦 Guardando orden con deliveryLocation:', JSON.stringify(orderData.deliveryLocation));
-
     const order = new Order(orderData);
     await order.save();
 
-    console.log('✅ Orden guardada:', order._id);
-
     await Client.findOneAndUpdate(
       { userId: clientId },
-      { 
+      {
         $push: { orders: order._id },
         $inc: { totalOrders: 1 }
       }
@@ -144,23 +113,7 @@ exports.createPublicOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error creando mandado:');
-    console.error('  Mensaje:', error.message);
-    console.error('  Stack:', error.stack);
-    console.error('  Body:', JSON.stringify(req.body, null, 2));
-    
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(e => ({
-        field: e.path,
-        message: e.message
-      }));
-      return res.status(400).json({
-        success: false,
-        message: 'Error de validación',
-        errors
-      });
-    }
-
+    console.error('❌ Error creando mandado público:', error);
     res.status(500).json({
       success: false,
       message: 'Error al crear mandado',
@@ -215,27 +168,22 @@ exports.createAssignedOrder = async (req, res) => {
       });
     }
 
-    // ✅ EXTRAER COORDENADAS
     let pickupCoords = null;
     let deliveryCoords = null;
 
     if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates) && pickupLocation.coordinates.length === 2) {
       pickupCoords = pickupLocation.coordinates.map(Number);
-    }
-    else if (pickupLocation?.lat !== undefined && pickupLocation?.lng !== undefined) {
+    } else if (pickupLocation?.lat !== undefined && pickupLocation?.lng !== undefined) {
       pickupCoords = [Number(pickupLocation.lng), Number(pickupLocation.lat)];
-    }
-    else if (Array.isArray(pickupLocation) && pickupLocation.length === 2) {
+    } else if (Array.isArray(pickupLocation) && pickupLocation.length === 2) {
       pickupCoords = pickupLocation.map(Number);
     }
 
     if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates) && deliveryLocation.coordinates.length === 2) {
       deliveryCoords = deliveryLocation.coordinates.map(Number);
-    }
-    else if (deliveryLocation?.lat !== undefined && deliveryLocation?.lng !== undefined) {
+    } else if (deliveryLocation?.lat !== undefined && deliveryLocation?.lng !== undefined) {
       deliveryCoords = [Number(deliveryLocation.lng), Number(deliveryLocation.lat)];
-    }
-    else if (Array.isArray(deliveryLocation) && deliveryLocation.length === 2) {
+    } else if (Array.isArray(deliveryLocation) && deliveryLocation.length === 2) {
       deliveryCoords = deliveryLocation.map(Number);
     }
 
@@ -262,15 +210,9 @@ exports.createAssignedOrder = async (req, res) => {
       type: 'assigned',
       description: description || 'Mandado sin descripción',
       pickupAddress: pickupAddress || 'Dirección no especificada',
-      pickupLocation: {
-        type: 'Point',
-        coordinates: pickupCoords
-      },
+      pickupLocation: pickupCoords,
       deliveryAddress: deliveryAddress || 'Dirección no especificada',
-      deliveryLocation: {
-        type: 'Point',
-        coordinates: deliveryCoords
-      },
+      deliveryLocation: deliveryCoords,
       distance: distance,
       amount: amount,
       status: 'accepted',
@@ -282,7 +224,7 @@ exports.createAssignedOrder = async (req, res) => {
 
     await Client.findOneAndUpdate(
       { userId: clientId },
-      { 
+      {
         $push: { orders: order._id },
         $inc: { totalOrders: 1 }
       }
@@ -336,7 +278,7 @@ exports.createAssignedOrder = async (req, res) => {
 };
 
 // ============================================
-// RESTO DE FUNCIONES
+// OBTENER ÓRDENES DEL USUARIO
 // ============================================
 exports.getMyOrders = async (req, res) => {
   try {
@@ -387,15 +329,18 @@ exports.getMyOrders = async (req, res) => {
   }
 };
 
+// ============================================
+// OBTENER ÓRDENES DISPONIBLES (MANDADITOS)
+// ============================================
 exports.getAvailableOrders = async (req, res) => {
   try {
     const orders = await Order.find({
       status: 'pending',
       type: 'public'
     })
-    .populate('clientId', 'firstName lastName email phone profilePhoto')
-    .populate('businessId', 'businessName profilePhoto')
-    .sort({ createdAt: -1 });
+      .populate('clientId', 'firstName lastName email phone profilePhoto')
+      .populate('businessId', 'businessName profilePhoto')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -411,6 +356,9 @@ exports.getAvailableOrders = async (req, res) => {
   }
 };
 
+// ============================================
+// ACEPTAR MANDADO PÚBLICO
+// ============================================
 exports.acceptPublicOrder = async (req, res) => {
   try {
     const mandaditoId = req.userId;
@@ -489,6 +437,9 @@ exports.acceptPublicOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// COMPLETAR MANDADO
+// ============================================
 exports.completeOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -545,6 +496,9 @@ exports.completeOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// CANCELAR MANDADO
+// ============================================
 exports.cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -586,7 +540,7 @@ exports.cancelOrder = async (req, res) => {
         mandadito.credits += 5;
         await mandadito.save();
       }
-      
+
       const io = req.app.get('io');
       if (io) {
         io.to(`user_${order.mandaditoId}`).emit('order_cancelled', {
@@ -610,6 +564,9 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// SOLICITAR DEVOLUCIÓN DE CRÉDITOS
+// ============================================
 exports.requestCreditRefund = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -659,120 +616,6 @@ exports.requestCreditRefund = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al solicitar devolución'
-    });
-  }
-};
-
-// ===== FUNCIONES ADICIONALES =====
-exports.updateOrderLocation = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { latitude, longitude } = req.body;
-    const userId = req.userId;
-
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Mandado no encontrado'
-      });
-    }
-
-    if (order.mandaditoId?.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: 'No autorizado'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Ubicación actualizada',
-      location: { latitude, longitude }
-    });
-
-  } catch (error) {
-    console.error('❌ Error actualizando ubicación:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al actualizar ubicación'
-    });
-  }
-};
-
-exports.rateOrder = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { rating, comment, role } = req.body;
-    const userId = req.userId;
-
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Mandado no encontrado'
-      });
-    }
-
-    if (order.status !== 'completed') {
-      return res.status(400).json({
-        success: false,
-        message: 'Solo se pueden calificar mandados completados'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Calificación enviada'
-    });
-
-  } catch (error) {
-    console.error('❌ Error calificando:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al calificar'
-    });
-  }
-};
-
-exports.getOrderTracking = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const userId = req.userId;
-
-    const order = await Order.findById(orderId)
-      .populate('clientId', 'firstName lastName profilePhoto')
-      .populate('mandaditoId', 'firstName lastName profilePhoto');
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Mandado no encontrado'
-      });
-    }
-
-    res.json({
-      success: true,
-      tracking: {
-        status: order.status,
-        updates: order.tracking?.updates || []
-      },
-      order: {
-        id: order._id,
-        voucherCode: order.voucherCode,
-        description: order.description,
-        pickupAddress: order.pickupAddress,
-        deliveryAddress: order.deliveryAddress,
-        amount: order.amount,
-        status: order.status
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error obteniendo seguimiento:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener seguimiento'
     });
   }
 };

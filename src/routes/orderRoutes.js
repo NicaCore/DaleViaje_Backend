@@ -1,10 +1,7 @@
-// src/routes/orderRoutes.js - VERSIÓN CORREGIDA
 const express = require('express');
 const router = express.Router();
 const { auth, checkRole } = require('../middleware/auth');
 const { validateOrder } = require('../middleware/validation');
-
-// ✅ Importar TODAS las funciones del controlador
 const {
   createPublicOrder,
   createAssignedOrder,

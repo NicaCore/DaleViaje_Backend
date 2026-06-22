@@ -61,7 +61,7 @@ const validateLogin = [
   validateResult
 ];
 
-// ✅ VALIDACIÓN SIMPLIFICADA - SOLO CAMPOS BÁSICOS
+// ✅ VALIDACIÓN SIMPLIFICADA
 const validateOrder = [
   body('description')
     .notEmpty().withMessage('La descripción es requerida')
@@ -70,14 +70,8 @@ const validateOrder = [
   body('pickupAddress')
     .notEmpty().withMessage('La dirección de recogida es requerida'),
 
-  body('pickupLocation')
-    .exists().withMessage('La ubicación de recogida es requerida'),
-
   body('deliveryAddress')
     .notEmpty().withMessage('La dirección de entrega es requerida'),
-
-  body('deliveryLocation')
-    .exists().withMessage('La ubicación de entrega es requerida'),
 
   validateResult
 ];
