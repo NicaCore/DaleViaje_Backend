@@ -23,15 +23,15 @@ exports.createPublicOrder = async (req, res) => {
     } = req.body;
 
     console.log('📝 Creando mandado:');
-    console.log('  pickupLocation:', pickupLocation);
-    console.log('  deliveryLocation:', deliveryLocation);
+    console.log('  pickupLocation:', JSON.stringify(pickupLocation));
+    console.log('  deliveryLocation:', JSON.stringify(deliveryLocation));
 
-    // ✅ EXTRAER COORDENADAS - SOPORTA MÚLTIPLES FORMATOS
+    // ✅ EXTRAER COORDENADAS DE CUALQUIER FORMATO
     let pickupCoords = null;
     let deliveryCoords = null;
 
     // Formato 1: { coordinates: [lng, lat] }
-    if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates)) {
+    if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates) && pickupLocation.coordinates.length === 2) {
       pickupCoords = pickupLocation.coordinates.map(Number);
     }
     // Formato 2: { lat: x, lng: y }
@@ -39,29 +39,31 @@ exports.createPublicOrder = async (req, res) => {
       pickupCoords = [Number(pickupLocation.lng), Number(pickupLocation.lat)];
     }
     // Formato 3: [lng, lat]
-    else if (Array.isArray(pickupLocation)) {
+    else if (Array.isArray(pickupLocation) && pickupLocation.length === 2) {
       pickupCoords = pickupLocation.map(Number);
     }
 
-    if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates)) {
+    if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates) && deliveryLocation.coordinates.length === 2) {
       deliveryCoords = deliveryLocation.coordinates.map(Number);
     }
     else if (deliveryLocation?.lat !== undefined && deliveryLocation?.lng !== undefined) {
       deliveryCoords = [Number(deliveryLocation.lng), Number(deliveryLocation.lat)];
     }
-    else if (Array.isArray(deliveryLocation)) {
+    else if (Array.isArray(deliveryLocation) && deliveryLocation.length === 2) {
       deliveryCoords = deliveryLocation.map(Number);
     }
 
-    // ✅ VALIDAR QUE TENGAMOS COORDENADAS VÁLIDAS
-    if (!pickupCoords || pickupCoords.length < 2 || isNaN(pickupCoords[0]) || isNaN(pickupCoords[1])) {
+    // ✅ VALIDAR COORDENADAS
+    if (!pickupCoords || pickupCoords.length !== 2 || isNaN(pickupCoords[0]) || isNaN(pickupCoords[1])) {
+      console.log('❌ pickupCoords inválido:', pickupCoords);
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de recogida inválidas. Debe ser [longitud, latitud]'
       });
     }
 
-    if (!deliveryCoords || deliveryCoords.length < 2 || isNaN(deliveryCoords[0]) || isNaN(deliveryCoords[1])) {
+    if (!deliveryCoords || deliveryCoords.length !== 2 || isNaN(deliveryCoords[0]) || isNaN(deliveryCoords[1])) {
+      console.log('❌ deliveryCoords inválido:', deliveryCoords);
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de entrega inválidas. Debe ser [longitud, latitud]'
@@ -71,21 +73,12 @@ exports.createPublicOrder = async (req, res) => {
     console.log('  pickupCoords:', pickupCoords);
     console.log('  deliveryCoords:', deliveryCoords);
 
-    // ✅ VALIDAR QUE ESTÉN EN JUICIALPA (OPCIONAL - COMENTAR SI QUIERES PERMITIR TODO)
-    // const [pickupLng, pickupLat] = pickupCoords;
-    // const [deliveryLng, deliveryLat] = deliveryCoords;
-    // if (pickupLat < 11.9 || pickupLat > 12.3 || pickupLng < -85.3 || pickupLng > -84.7) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: 'La ubicación de recogida debe estar en Juigalpa, Chontales'
-    //   });
-    // }
-
     const distance = calculateDistance(pickupCoords, deliveryCoords);
     const amount = calculatePrice(distance);
 
     console.log(`  Distancia: ${distance}km, Precio: C$${amount}`);
 
+    // ✅ CREAR ORDEN CON GeoJSON VÁLIDO
     const orderData = {
       clientId,
       type: 'public',
@@ -105,6 +98,9 @@ exports.createPublicOrder = async (req, res) => {
       status: 'pending',
       businessId: businessId || null
     };
+
+    console.log('📦 Guardando orden con pickupLocation:', JSON.stringify(orderData.pickupLocation));
+    console.log('📦 Guardando orden con deliveryLocation:', JSON.stringify(orderData.deliveryLocation));
 
     const order = new Order(orderData);
     await order.save();
@@ -148,7 +144,23 @@ exports.createPublicOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error creando mandado:', error);
+    console.error('❌ Error creando mandado:');
+    console.error('  Mensaje:', error.message);
+    console.error('  Stack:', error.stack);
+    console.error('  Body:', JSON.stringify(req.body, null, 2));
+    
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(e => ({
+        field: e.path,
+        message: e.message
+      }));
+      return res.status(400).json({
+        success: false,
+        message: 'Error de validación',
+        errors
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Error al crear mandado',
@@ -207,34 +219,34 @@ exports.createAssignedOrder = async (req, res) => {
     let pickupCoords = null;
     let deliveryCoords = null;
 
-    if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates)) {
+    if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates) && pickupLocation.coordinates.length === 2) {
       pickupCoords = pickupLocation.coordinates.map(Number);
     }
     else if (pickupLocation?.lat !== undefined && pickupLocation?.lng !== undefined) {
       pickupCoords = [Number(pickupLocation.lng), Number(pickupLocation.lat)];
     }
-    else if (Array.isArray(pickupLocation)) {
+    else if (Array.isArray(pickupLocation) && pickupLocation.length === 2) {
       pickupCoords = pickupLocation.map(Number);
     }
 
-    if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates)) {
+    if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates) && deliveryLocation.coordinates.length === 2) {
       deliveryCoords = deliveryLocation.coordinates.map(Number);
     }
     else if (deliveryLocation?.lat !== undefined && deliveryLocation?.lng !== undefined) {
       deliveryCoords = [Number(deliveryLocation.lng), Number(deliveryLocation.lat)];
     }
-    else if (Array.isArray(deliveryLocation)) {
+    else if (Array.isArray(deliveryLocation) && deliveryLocation.length === 2) {
       deliveryCoords = deliveryLocation.map(Number);
     }
 
-    if (!pickupCoords || pickupCoords.length < 2 || isNaN(pickupCoords[0]) || isNaN(pickupCoords[1])) {
+    if (!pickupCoords || pickupCoords.length !== 2 || isNaN(pickupCoords[0]) || isNaN(pickupCoords[1])) {
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de recogida inválidas'
       });
     }
 
-    if (!deliveryCoords || deliveryCoords.length < 2 || isNaN(deliveryCoords[0]) || isNaN(deliveryCoords[1])) {
+    if (!deliveryCoords || deliveryCoords.length !== 2 || isNaN(deliveryCoords[0]) || isNaN(deliveryCoords[1])) {
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de entrega inválidas'
@@ -324,7 +336,7 @@ exports.createAssignedOrder = async (req, res) => {
 };
 
 // ============================================
-// RESTO DE FUNCIONES (IGUAL QUE ANTES)
+// RESTO DE FUNCIONES
 // ============================================
 exports.getMyOrders = async (req, res) => {
   try {
@@ -647,6 +659,120 @@ exports.requestCreditRefund = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al solicitar devolución'
+    });
+  }
+};
+
+// ===== FUNCIONES ADICIONALES =====
+exports.updateOrderLocation = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { latitude, longitude } = req.body;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    if (order.mandaditoId?.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'No autorizado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Ubicación actualizada',
+      location: { latitude, longitude }
+    });
+
+  } catch (error) {
+    console.error('❌ Error actualizando ubicación:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar ubicación'
+    });
+  }
+};
+
+exports.rateOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { rating, comment, role } = req.body;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    if (order.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo se pueden calificar mandados completados'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Calificación enviada'
+    });
+
+  } catch (error) {
+    console.error('❌ Error calificando:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al calificar'
+    });
+  }
+};
+
+exports.getOrderTracking = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId)
+      .populate('clientId', 'firstName lastName profilePhoto')
+      .populate('mandaditoId', 'firstName lastName profilePhoto');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      tracking: {
+        status: order.status,
+        updates: order.tracking?.updates || []
+      },
+      order: {
+        id: order._id,
+        voucherCode: order.voucherCode,
+        description: order.description,
+        pickupAddress: order.pickupAddress,
+        deliveryAddress: order.deliveryAddress,
+        amount: order.amount,
+        status: order.status
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error obteniendo seguimiento:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener seguimiento'
     });
   }
 };
