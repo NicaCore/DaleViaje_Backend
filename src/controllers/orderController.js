@@ -1,3 +1,4 @@
+// src/controllers/orderController.js - CORREGIDO
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Client = require('../models/Client');
@@ -47,13 +48,31 @@ exports.createPublicOrder = async (req, res) => {
     const pickupCoords = pickupLocation.coordinates.map(Number);
     const deliveryCoords = deliveryLocation.coordinates.map(Number);
 
+    // ✅ RESTRINGIR A JUICIALPA, CHONTALES
+    const [pickupLng, pickupLat] = pickupCoords;
+    const [deliveryLng, deliveryLat] = deliveryCoords;
+
+    if (pickupLat < 11.9 || pickupLat > 12.3 || pickupLng < -85.3 || pickupLng > -84.7) {
+      return res.status(400).json({
+        success: false,
+        message: 'La ubicación de recogida debe estar en Juigalpa, Chontales'
+      });
+    }
+
+    if (deliveryLat < 11.9 || deliveryLat > 12.3 || deliveryLng < -85.3 || deliveryLng > -84.7) {
+      return res.status(400).json({
+        success: false,
+        message: 'La ubicación de entrega debe estar en Juigalpa, Chontales'
+      });
+    }
+
     // ✅ Calcular distancia y precio
     const distance = calculateDistance(pickupCoords, deliveryCoords);
     const amount = calculatePrice(distance);
 
     console.log(`  Distancia: ${distance}km, Precio: C$${amount}`);
 
-    // ✅ Crear orden con SOLO campos necesarios
+    // ✅ Crear orden
     const orderData = {
       clientId,
       type: 'public',
@@ -123,7 +142,6 @@ exports.createPublicOrder = async (req, res) => {
     console.error('  Mensaje:', error.message);
     console.error('  Stack:', error.stack);
     
-    // ✅ Si es error de validación de mongoose
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(e => ({
         field: e.path,
@@ -163,7 +181,6 @@ exports.createAssignedOrder = async (req, res) => {
     console.log('📝 Creando mandado asignado:');
     console.log('  Mandadito:', mandaditoId);
 
-    // ✅ Validar mandadito
     if (!mandaditoId) {
       return res.status(400).json({
         success: false,
@@ -194,7 +211,7 @@ exports.createAssignedOrder = async (req, res) => {
       });
     }
 
-    // ✅ Validar coordenadas
+    // ✅ VALIDAR coordenadas
     if (!pickupLocation?.coordinates || pickupLocation.coordinates.length < 2) {
       return res.status(400).json({
         success: false,
@@ -211,6 +228,24 @@ exports.createAssignedOrder = async (req, res) => {
 
     const pickupCoords = pickupLocation.coordinates.map(Number);
     const deliveryCoords = deliveryLocation.coordinates.map(Number);
+
+    // ✅ RESTRINGIR A JUICIALPA, CHONTALES
+    const [pickupLng, pickupLat] = pickupCoords;
+    const [deliveryLng, deliveryLat] = deliveryCoords;
+
+    if (pickupLat < 11.9 || pickupLat > 12.3 || pickupLng < -85.3 || pickupLng > -84.7) {
+      return res.status(400).json({
+        success: false,
+        message: 'La ubicación de recogida debe estar en Juigalpa, Chontales'
+      });
+    }
+
+    if (deliveryLat < 11.9 || deliveryLat > 12.3 || deliveryLng < -85.3 || deliveryLng > -84.7) {
+      return res.status(400).json({
+        success: false,
+        message: 'La ubicación de entrega debe estar en Juigalpa, Chontales'
+      });
+    }
 
     const distance = calculateDistance(pickupCoords, deliveryCoords);
     const amount = calculatePrice(distance);
@@ -310,7 +345,7 @@ exports.createAssignedOrder = async (req, res) => {
 };
 
 // ============================================
-// RESTO DE FUNCIONES (sin cambios)
+// RESTO DE FUNCIONES
 // ============================================
 exports.getMyOrders = async (req, res) => {
   try {
@@ -633,6 +668,120 @@ exports.requestCreditRefund = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al solicitar devolución'
+    });
+  }
+};
+
+// ===== FUNCIONES ADICIONALES =====
+exports.updateOrderLocation = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { latitude, longitude } = req.body;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    if (order.mandaditoId?.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'No autorizado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Ubicación actualizada',
+      location: { latitude, longitude }
+    });
+
+  } catch (error) {
+    console.error('❌ Error actualizando ubicación:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar ubicación'
+    });
+  }
+};
+
+exports.rateOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { rating, comment, role } = req.body;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    if (order.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo se pueden calificar mandados completados'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Calificación enviada'
+    });
+
+  } catch (error) {
+    console.error('❌ Error calificando:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al calificar'
+    });
+  }
+};
+
+exports.getOrderTracking = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.userId;
+
+    const order = await Order.findById(orderId)
+      .populate('clientId', 'firstName lastName profilePhoto')
+      .populate('mandaditoId', 'firstName lastName profilePhoto');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mandado no encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      tracking: {
+        status: order.status,
+        updates: order.tracking?.updates || []
+      },
+      order: {
+        id: order._id,
+        voucherCode: order.voucherCode,
+        description: order.description,
+        pickupAddress: order.pickupAddress,
+        deliveryAddress: order.deliveryAddress,
+        amount: order.amount,
+        status: order.status
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error obteniendo seguimiento:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener seguimiento'
     });
   }
 };
