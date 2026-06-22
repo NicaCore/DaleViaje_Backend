@@ -1,4 +1,3 @@
-// src/models/Order.js - VERSIÓN FINAL ABSOLUTA
 const mongoose = require('mongoose');
 const { ORDER_STATUS, ORDER_TYPES } = require('../config/constants');
 
@@ -32,18 +31,9 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: [true, 'La dirección de recogida es requerida']
   },
-  // ✅ SIMPLE: solo guardamos un array de números
   pickupLocation: {
     type: [Number],
-    required: true,
-    validate: {
-      validator: function(v) {
-        return Array.isArray(v) && v.length === 2 &&
-          typeof v[0] === 'number' && typeof v[1] === 'number' &&
-          !isNaN(v[0]) && !isNaN(v[1]);
-      },
-      message: 'pickupLocation debe ser un array de 2 números [longitud, latitud]'
-    }
+    required: true
   },
   deliveryAddress: {
     type: String,
@@ -51,15 +41,7 @@ const orderSchema = new mongoose.Schema({
   },
   deliveryLocation: {
     type: [Number],
-    required: true,
-    validate: {
-      validator: function(v) {
-        return Array.isArray(v) && v.length === 2 &&
-          typeof v[0] === 'number' && typeof v[1] === 'number' &&
-          !isNaN(v[0]) && !isNaN(v[1]);
-      },
-      message: 'deliveryLocation debe ser un array de 2 números [longitud, latitud]'
-    }
+    required: true
   },
   distance: {
     type: Number,
@@ -123,7 +105,6 @@ const orderSchema = new mongoose.Schema({
     },
     note: String
   }],
-  // ✅ SIMPLE: tracking sin 2dsphere
   tracking: {
     status: {
       type: String,
@@ -132,18 +113,12 @@ const orderSchema = new mongoose.Schema({
     },
     updates: [{
       status: String,
-      location: {
-        type: [Number],
-        default: null
-      },
+      location: [Number],
       timestamp: { type: Date, default: Date.now },
       note: String,
       updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
     }],
-    currentLocation: {
-      type: [Number],
-      default: null
-    },
+    currentLocation: [Number],
     updatedAt: Date,
     estimatedTime: { type: Number, default: null },
     distanceRemaining: { type: Number, default: null }
@@ -175,7 +150,7 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// ✅ SOLO ÍNDICES BÁSICOS - SIN NINGÚN 2dsphere
+// ÍNDICES BÁSICOS - SIN 2dsphere
 orderSchema.index({ clientId: 1, status: 1 });
 orderSchema.index({ mandaditoId: 1, status: 1 });
 orderSchema.index({ voucherCode: 1 });
