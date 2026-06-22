@@ -1,4 +1,4 @@
-// src/models/Order.js - VERSIÓN DEFINITIVA
+// src/models/Order.js - VERSIÓN FINAL ABSOLUTA
 const mongoose = require('mongoose');
 const { ORDER_STATUS, ORDER_TYPES } = require('../config/constants');
 
@@ -32,19 +32,17 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: [true, 'La dirección de recogida es requerida']
   },
-  // ✅ CAMBIO IMPORTANTE: pickupLocation como objeto con coordinates ARRAY
+  // ✅ SIMPLE: solo guardamos un array de números
   pickupLocation: {
-    coordinates: {
-      type: [Number],
-      required: true,
-      validate: {
-        validator: function(v) {
-          return Array.isArray(v) && v.length === 2 &&
-            typeof v[0] === 'number' && typeof v[1] === 'number' &&
-            !isNaN(v[0]) && !isNaN(v[1]);
-        },
-        message: 'pickupLocation.coordinates debe ser un array de 2 números [longitud, latitud]'
-      }
+    type: [Number],
+    required: true,
+    validate: {
+      validator: function(v) {
+        return Array.isArray(v) && v.length === 2 &&
+          typeof v[0] === 'number' && typeof v[1] === 'number' &&
+          !isNaN(v[0]) && !isNaN(v[1]);
+      },
+      message: 'pickupLocation debe ser un array de 2 números [longitud, latitud]'
     }
   },
   deliveryAddress: {
@@ -52,17 +50,15 @@ const orderSchema = new mongoose.Schema({
     required: [true, 'La dirección de entrega es requerida']
   },
   deliveryLocation: {
-    coordinates: {
-      type: [Number],
-      required: true,
-      validate: {
-        validator: function(v) {
-          return Array.isArray(v) && v.length === 2 &&
-            typeof v[0] === 'number' && typeof v[1] === 'number' &&
-            !isNaN(v[0]) && !isNaN(v[1]);
-        },
-        message: 'deliveryLocation.coordinates debe ser un array de 2 números [longitud, latitud]'
-      }
+    type: [Number],
+    required: true,
+    validate: {
+      validator: function(v) {
+        return Array.isArray(v) && v.length === 2 &&
+          typeof v[0] === 'number' && typeof v[1] === 'number' &&
+          !isNaN(v[0]) && !isNaN(v[1]);
+      },
+      message: 'deliveryLocation debe ser un array de 2 números [longitud, latitud]'
     }
   },
   distance: {
@@ -127,6 +123,7 @@ const orderSchema = new mongoose.Schema({
     },
     note: String
   }],
+  // ✅ SIMPLE: tracking sin 2dsphere
   tracking: {
     status: {
       type: String,
@@ -135,15 +132,19 @@ const orderSchema = new mongoose.Schema({
     },
     updates: [{
       status: String,
-      location: { coordinates: [Number] },
+      location: {
+        type: [Number],
+        default: null
+      },
       timestamp: { type: Date, default: Date.now },
       note: String,
       updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
     }],
     currentLocation: {
-      coordinates: [Number],
-      updatedAt: Date
+      type: [Number],
+      default: null
     },
+    updatedAt: Date,
     estimatedTime: { type: Number, default: null },
     distanceRemaining: { type: Number, default: null }
   },
@@ -174,7 +175,7 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// ✅ SOLO ÍNDICES BÁSICOS - SIN 2dsphere
+// ✅ SOLO ÍNDICES BÁSICOS - SIN NINGÚN 2dsphere
 orderSchema.index({ clientId: 1, status: 1 });
 orderSchema.index({ mandaditoId: 1, status: 1 });
 orderSchema.index({ voucherCode: 1 });
@@ -222,21 +223,21 @@ orderSchema.methods.addNotification = async function(type, message, userId) {
 orderSchema.methods.addTrackingUpdate = async function(status, location, note) {
   if (!this.tracking) this.tracking = { updates: [] };
   this.tracking.status = status;
-  this.tracking.updates.push({
+  
+  const update = {
     status,
-    location: location || this.tracking.currentLocation,
     timestamp: new Date(),
     note: note || `Estado: ${status}`,
     updatedBy: this.mandaditoId || this.clientId
-  });
+  };
 
   if (location && location.coordinates) {
-    this.tracking.currentLocation = {
-      coordinates: location.coordinates,
-      updatedAt: new Date()
-    };
+    update.location = location.coordinates;
+    this.tracking.currentLocation = location.coordinates;
+    this.tracking.updatedAt = new Date();
   }
 
+  this.tracking.updates.push(update);
   return this.save();
 };
 
