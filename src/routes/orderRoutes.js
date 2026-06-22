@@ -1,7 +1,8 @@
+// src/routes/orderRoutes.js - VERSIÓN CORREGIDA
 const express = require('express');
 const router = express.Router();
 const { auth, checkRole } = require('../middleware/auth');
-const { validateOrder } = require('../middleware/validation');
+// const { validateOrder } = require('../middleware/validation'); // ✅ COMENTADO
 const {
   createPublicOrder,
   createAssignedOrder,
@@ -13,7 +14,6 @@ const {
   requestCreditRefund
 } = require('../controllers/orderController');
 
-// ===== TODAS LAS RUTAS REQUIEREN AUTENTICACIÓN =====
 router.use(auth);
 
 // ===== OBTENER ÓRDENES =====
@@ -21,8 +21,9 @@ router.get('/', getMyOrders);
 router.get('/available', checkRole(['mandadito']), getAvailableOrders);
 
 // ===== CLIENTES =====
-router.post('/public', checkRole(['client']), validateOrder, createPublicOrder);
-router.post('/assigned', checkRole(['client']), validateOrder, createAssignedOrder);
+// ✅ ELIMINADO validateOrder de estas rutas
+router.post('/public', checkRole(['client']), /* validateOrder, */ createPublicOrder);
+router.post('/assigned', checkRole(['client']), /* validateOrder, */ createAssignedOrder);
 router.put('/:orderId/cancel', checkRole(['client']), cancelOrder);
 
 // ===== MANDADITOS =====
