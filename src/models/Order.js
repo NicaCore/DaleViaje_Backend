@@ -32,16 +32,20 @@ const orderSchema = new mongoose.Schema({
     required: [true, 'La dirección de recogida es requerida']
   },
   pickupLocation: {
-    type: [Number],
-    required: true
+    coordinates: {
+      type: [Number],
+      required: true
+    }
   },
   deliveryAddress: {
     type: String,
     required: [true, 'La dirección de entrega es requerida']
   },
   deliveryLocation: {
-    type: [Number],
-    required: true
+    coordinates: {
+      type: [Number],
+      required: true
+    }
   },
   distance: {
     type: Number,
@@ -113,12 +117,16 @@ const orderSchema = new mongoose.Schema({
     },
     updates: [{
       status: String,
-      location: [Number],
+      location: {
+        coordinates: [Number]
+      },
       timestamp: { type: Date, default: Date.now },
       note: String,
       updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
     }],
-    currentLocation: [Number],
+    currentLocation: {
+      coordinates: [Number]
+    },
     updatedAt: Date,
     estimatedTime: { type: Number, default: null },
     distanceRemaining: { type: Number, default: null }
@@ -207,8 +215,8 @@ orderSchema.methods.addTrackingUpdate = async function(status, location, note) {
   };
 
   if (location && location.coordinates) {
-    update.location = location.coordinates;
-    this.tracking.currentLocation = location.coordinates;
+    update.location = { coordinates: location.coordinates };
+    this.tracking.currentLocation = { coordinates: location.coordinates };
     this.tracking.updatedAt = new Date();
   }
 

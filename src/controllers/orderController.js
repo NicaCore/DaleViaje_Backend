@@ -1,4 +1,3 @@
-// src/controllers/orderController.js - SOLO createPublicOrder ACTUALIZADO
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Client = require('../models/Client');
@@ -8,7 +7,7 @@ const Chat = require('../models/Chat');
 const { calculateDistance, calculatePrice } = require('../utils/distanceCalculator');
 
 // ============================================
-// CREAR MANDADO PÚBLICO - ACTUALIZADO
+// CREAR MANDADO PÚBLICO
 // ============================================
 exports.createPublicOrder = async (req, res) => {
   try {
@@ -22,9 +21,31 @@ exports.createPublicOrder = async (req, res) => {
       businessId
     } = req.body;
 
-    console.log('📝 Creando mandado público:');
+    console.log('📝 Creando mandado:');
     console.log('  pickupLocation:', pickupLocation);
     console.log('  deliveryLocation:', deliveryLocation);
+
+    // ✅ VALIDACIÓN EN EL CONTROLADOR
+    if (!pickupAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'La dirección de recogida es requerida'
+      });
+    }
+
+    if (!deliveryAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'La dirección de entrega es requerida'
+      });
+    }
+
+    if (!description) {
+      return res.status(400).json({
+        success: false,
+        message: 'La descripción es requerida'
+      });
+    }
 
     // ✅ EXTRAER COORDENADAS
     let pickupCoords = null;
@@ -65,7 +86,6 @@ exports.createPublicOrder = async (req, res) => {
 
     console.log(`  Distancia: ${distance}km, Precio: C$${amount}`);
 
-    // ✅ NUEVO FORMATO: pickupLocation y deliveryLocation como objetos con coordinates
     const orderData = {
       clientId,
       type: 'public',
@@ -128,7 +148,7 @@ exports.createPublicOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error creando mandado público:');
+    console.error('❌ Error creando mandado:');
     console.error('  Mensaje:', error.message);
     console.error('  Stack:', error.stack);
     console.error('  Body:', JSON.stringify(req.body, null, 2));
@@ -154,7 +174,7 @@ exports.createPublicOrder = async (req, res) => {
 };
 
 // ============================================
-// CREAR MANDADO ASIGNADO - ACTUALIZADO
+// CREAR MANDADO ASIGNADO
 // ============================================
 exports.createAssignedOrder = async (req, res) => {
   try {
@@ -313,7 +333,7 @@ exports.createAssignedOrder = async (req, res) => {
 };
 
 // ============================================
-// RESTO DE FUNCIONES (IGUAL)
+// OBTENER ÓRDENES DEL USUARIO
 // ============================================
 exports.getMyOrders = async (req, res) => {
   try {
@@ -364,30 +384,9 @@ exports.getMyOrders = async (req, res) => {
   }
 };
 
-exports.getAvailableOrders = async (req, res) => {
-  try {
-    const orders = await Order.find({
-      status: 'pending',
-      type: 'public'
-    })
-      .populate('clientId', 'firstName lastName email phone profilePhoto')
-      .populate('businessId', 'businessName profilePhoto')
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      orders
-    });
-
-  } catch (error) {
-    console.error('❌ Error obteniendo órdenes disponibles:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener órdenes disponibles'
-    });
-  }
-};
-
+// ============================================
+// ACEPTAR MANDADO PÚBLICO
+// ============================================
 exports.acceptPublicOrder = async (req, res) => {
   try {
     const mandaditoId = req.userId;
@@ -466,6 +465,9 @@ exports.acceptPublicOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// COMPLETAR MANDADO
+// ============================================
 exports.completeOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -522,6 +524,9 @@ exports.completeOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// CANCELAR MANDADO
+// ============================================
 exports.cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -587,6 +592,9 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// SOLICITAR DEVOLUCIÓN DE CRÉDITOS
+// ============================================
 exports.requestCreditRefund = async (req, res) => {
   try {
     const { orderId } = req.params;

@@ -1,3 +1,4 @@
+// src/middleware/validation.js - CON validateOrder COMENTADO
 const { body, validationResult } = require('express-validator');
 
 const validateResult = (req, res, next) => {
@@ -61,20 +62,17 @@ const validateLogin = [
   validateResult
 ];
 
-// ✅ VALIDACIÓN SIMPLIFICADA
-const validateOrder = [
-  body('description')
-    .notEmpty().withMessage('La descripción es requerida')
-    .isLength({ max: 500 }).withMessage('La descripción no puede exceder 500 caracteres'),
-
-  body('pickupAddress')
-    .notEmpty().withMessage('La dirección de recogida es requerida'),
-
-  body('deliveryAddress')
-    .notEmpty().withMessage('La dirección de entrega es requerida'),
-
-  validateResult
-];
+// ✅ COMENTADO - La validación se hace en el controlador
+// const validateOrder = [
+//   body('description')
+//     .notEmpty().withMessage('La descripción es requerida')
+//     .isLength({ max: 500 }).withMessage('La descripción no puede exceder 500 caracteres'),
+//   body('pickupAddress')
+//     .notEmpty().withMessage('La dirección de recogida es requerida'),
+//   body('deliveryAddress')
+//     .notEmpty().withMessage('La dirección de entrega es requerida'),
+//   validateResult
+// ];
 
 const validateBusiness = [
   body('businessName')
@@ -103,6 +101,6 @@ module.exports = {
   validateResult,
   validateRegister,
   validateLogin,
-  validateOrder,
+  // validateOrder, // ✅ COMENTADO
   validateBusiness
 };

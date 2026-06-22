@@ -1,13 +1,10 @@
-// src/routes/orderRoutes.js - VERSIÓN CORREGIDA
 const express = require('express');
 const router = express.Router();
 const { auth, checkRole } = require('../middleware/auth');
-// const { validateOrder } = require('../middleware/validation'); // ✅ COMENTADO
 const {
   createPublicOrder,
   createAssignedOrder,
   getMyOrders,
-  getAvailableOrders,
   acceptPublicOrder,
   completeOrder,
   cancelOrder,
@@ -18,12 +15,10 @@ router.use(auth);
 
 // ===== OBTENER ÓRDENES =====
 router.get('/', getMyOrders);
-router.get('/available', checkRole(['mandadito']), getAvailableOrders);
 
 // ===== CLIENTES =====
-// ✅ ELIMINADO validateOrder de estas rutas
-router.post('/public', checkRole(['client']), /* validateOrder, */ createPublicOrder);
-router.post('/assigned', checkRole(['client']), /* validateOrder, */ createAssignedOrder);
+router.post('/public', checkRole(['client']), createPublicOrder);
+router.post('/assigned', checkRole(['client']), createAssignedOrder);
 router.put('/:orderId/cancel', checkRole(['client']), cancelOrder);
 
 // ===== MANDADITOS =====
