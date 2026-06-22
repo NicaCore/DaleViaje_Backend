@@ -1,4 +1,3 @@
-// src/middleware/validation.js
 const { body, validationResult } = require('express-validator');
 
 const validateResult = (req, res, next) => {
@@ -62,7 +61,7 @@ const validateLogin = [
   validateResult
 ];
 
-// ✅ VALIDACIÓN CORREGIDA - PARA JUICIALPA, CHONTALES
+// ✅ VALIDACIÓN SIMPLIFICADA - SOLO CAMPOS BÁSICOS
 const validateOrder = [
   body('description')
     .notEmpty().withMessage('La descripción es requerida')
@@ -72,58 +71,13 @@ const validateOrder = [
     .notEmpty().withMessage('La dirección de recogida es requerida'),
 
   body('pickupLocation')
-    .exists().withMessage('La ubicación de recogida es requerida')
-    .custom((value) => {
-      // ✅ Validar que coordinates sea un array de 2 números
-      if (!value.coordinates || !Array.isArray(value.coordinates) || value.coordinates.length !== 2) {
-        throw new Error('pickupLocation.coordinates debe ser un array de 2 números [longitud, latitud]');
-      }
-      
-      const [lng, lat] = value.coordinates;
-      
-      // ✅ Validar que sean números
-      if (typeof lng !== 'number' || typeof lat !== 'number') {
-        throw new Error('Las coordenadas deben ser números');
-      }
-      
-      // ✅ RESTRINGIR A JUICIALPA, CHONTALES
-      // Juigalpa: lat ~12.0-12.2, lng ~-85.0-(-84.8)
-      if (lat < 11.9 || lat > 12.3) {
-        throw new Error('La ubicación debe estar en Juigalpa, Chontales (latitud: 11.9-12.3)');
-      }
-      if (lng < -85.3 || lng > -84.7) {
-        throw new Error('La ubicación debe estar en Juigalpa, Chontales (longitud: -85.3 a -84.7)');
-      }
-      
-      return true;
-    }),
+    .exists().withMessage('La ubicación de recogida es requerida'),
 
   body('deliveryAddress')
     .notEmpty().withMessage('La dirección de entrega es requerida'),
 
   body('deliveryLocation')
-    .exists().withMessage('La ubicación de entrega es requerida')
-    .custom((value) => {
-      if (!value.coordinates || !Array.isArray(value.coordinates) || value.coordinates.length !== 2) {
-        throw new Error('deliveryLocation.coordinates debe ser un array de 2 números [longitud, latitud]');
-      }
-      
-      const [lng, lat] = value.coordinates;
-      
-      if (typeof lng !== 'number' || typeof lat !== 'number') {
-        throw new Error('Las coordenadas deben ser números');
-      }
-      
-      // ✅ RESTRINGIR A JUICIALPA, CHONTALES
-      if (lat < 11.9 || lat > 12.3) {
-        throw new Error('La ubicación debe estar en Juigalpa, Chontales (latitud: 11.9-12.3)');
-      }
-      if (lng < -85.3 || lng > -84.7) {
-        throw new Error('La ubicación debe estar en Juigalpa, Chontales (longitud: -85.3 a -84.7)');
-      }
-      
-      return true;
-    }),
+    .exists().withMessage('La ubicación de entrega es requerida'),
 
   validateResult
 ];

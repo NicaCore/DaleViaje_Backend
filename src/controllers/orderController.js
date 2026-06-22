@@ -1,4 +1,3 @@
-// src/controllers/orderController.js - CORREGIDO
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Client = require('../models/Client');
@@ -8,12 +7,12 @@ const Chat = require('../models/Chat');
 const { calculateDistance, calculatePrice } = require('../utils/distanceCalculator');
 
 // ============================================
-// CREAR MANDADO PÚBLICO - CORREGIDO
+// CREAR MANDADO PÚBLICO
 // ============================================
 exports.createPublicOrder = async (req, res) => {
   try {
     const clientId = req.userId;
-    const {
+    let {
       description,
       pickupAddress,
       pickupLocation,
@@ -23,32 +22,52 @@ exports.createPublicOrder = async (req, res) => {
     } = req.body;
 
     console.log('📝 Creando mandado público:');
-    console.log('  Descripción:', description);
-    console.log('  Recogida:', pickupAddress);
-    console.log('  Coordenadas recogida:', pickupLocation?.coordinates);
-    console.log('  Entrega:', deliveryAddress);
-    console.log('  Coordenadas entrega:', deliveryLocation?.coordinates);
+    console.log('  pickupLocation:', pickupLocation);
+    console.log('  deliveryLocation:', deliveryLocation);
 
-    // ✅ VALIDAR coordenadas
-    if (!pickupLocation?.coordinates || pickupLocation.coordinates.length < 2) {
+    // ✅ NORMALIZAR coordenadas - soporta múltiples formatos
+    const normalizeCoords = (location) => {
+      if (!location) return null;
+      
+      // Si es array [lng, lat]
+      if (Array.isArray(location)) {
+        return { coordinates: location.map(Number) };
+      }
+      
+      // Si tiene coordinates
+      if (location.coordinates && Array.isArray(location.coordinates)) {
+        return { coordinates: location.coordinates.map(Number) };
+      }
+      
+      // Si tiene lat/lng
+      if (location.lat !== undefined && location.lng !== undefined) {
+        return { coordinates: [Number(location.lng), Number(location.lat)] };
+      }
+      
+      return null;
+    };
+
+    const normalizedPickup = normalizeCoords(pickupLocation);
+    const normalizedDelivery = normalizeCoords(deliveryLocation);
+
+    if (!normalizedPickup || !normalizedPickup.coordinates || normalizedPickup.coordinates.length < 2) {
       return res.status(400).json({
         success: false,
-        message: 'Coordenadas de recogida inválidas'
+        message: 'Coordenadas de recogida inválidas. Debe ser [longitud, latitud]'
       });
     }
 
-    if (!deliveryLocation?.coordinates || deliveryLocation.coordinates.length < 2) {
+    if (!normalizedDelivery || !normalizedDelivery.coordinates || normalizedDelivery.coordinates.length < 2) {
       return res.status(400).json({
         success: false,
-        message: 'Coordenadas de entrega inválidas'
+        message: 'Coordenadas de entrega inválidas. Debe ser [longitud, latitud]'
       });
     }
 
-    // ✅ Asegurar que coordenadas sean números
-    const pickupCoords = pickupLocation.coordinates.map(Number);
-    const deliveryCoords = deliveryLocation.coordinates.map(Number);
+    const pickupCoords = normalizedPickup.coordinates;
+    const deliveryCoords = normalizedDelivery.coordinates;
 
-    // ✅ RESTRINGIR A JUICIALPA, CHONTALES
+    // ✅ VALIDAR JUICIALPA, CHONTALES
     const [pickupLng, pickupLat] = pickupCoords;
     const [deliveryLng, deliveryLat] = deliveryCoords;
 
@@ -66,13 +85,11 @@ exports.createPublicOrder = async (req, res) => {
       });
     }
 
-    // ✅ Calcular distancia y precio
     const distance = calculateDistance(pickupCoords, deliveryCoords);
     const amount = calculatePrice(distance);
 
     console.log(`  Distancia: ${distance}km, Precio: C$${amount}`);
 
-    // ✅ Crear orden
     const orderData = {
       clientId,
       type: 'public',
@@ -98,7 +115,6 @@ exports.createPublicOrder = async (req, res) => {
 
     console.log('✅ Orden guardada:', order._id, 'Código:', order.voucherCode);
 
-    // ✅ Actualizar cliente
     await Client.findOneAndUpdate(
       { userId: clientId },
       { 
@@ -107,7 +123,6 @@ exports.createPublicOrder = async (req, res) => {
       }
     );
 
-    // ✅ Crear chat
     const chat = new Chat({
       orderId: order._id,
       clientId,
@@ -119,7 +134,6 @@ exports.createPublicOrder = async (req, res) => {
     order.chatId = chat._id;
     await order.save();
 
-    // ✅ Emitir via Socket.io
     const io = req.app.get('io');
     if (io) {
       io.to(`user_${clientId}`).emit('new_order', {
@@ -138,9 +152,7 @@ exports.createPublicOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error creando mandado público:');
-    console.error('  Mensaje:', error.message);
-    console.error('  Stack:', error.stack);
+    console.error('❌ Error creando mandado público:', error);
     
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(e => ({
@@ -163,12 +175,12 @@ exports.createPublicOrder = async (req, res) => {
 };
 
 // ============================================
-// CREAR MANDADO ASIGNADO - CORREGIDO
+// CREAR MANDADO ASIGNADO
 // ============================================
 exports.createAssignedOrder = async (req, res) => {
   try {
     const clientId = req.userId;
-    const {
+    let {
       description,
       pickupAddress,
       pickupLocation,
@@ -177,9 +189,6 @@ exports.createAssignedOrder = async (req, res) => {
       mandaditoId,
       businessId
     } = req.body;
-
-    console.log('📝 Creando mandado asignado:');
-    console.log('  Mandadito:', mandaditoId);
 
     if (!mandaditoId) {
       return res.status(400).json({
@@ -211,25 +220,42 @@ exports.createAssignedOrder = async (req, res) => {
       });
     }
 
-    // ✅ VALIDAR coordenadas
-    if (!pickupLocation?.coordinates || pickupLocation.coordinates.length < 2) {
+    // ✅ NORMALIZAR coordenadas
+    const normalizeCoords = (location) => {
+      if (!location) return null;
+      if (Array.isArray(location)) {
+        return { coordinates: location.map(Number) };
+      }
+      if (location.coordinates && Array.isArray(location.coordinates)) {
+        return { coordinates: location.coordinates.map(Number) };
+      }
+      if (location.lat !== undefined && location.lng !== undefined) {
+        return { coordinates: [Number(location.lng), Number(location.lat)] };
+      }
+      return null;
+    };
+
+    const normalizedPickup = normalizeCoords(pickupLocation);
+    const normalizedDelivery = normalizeCoords(deliveryLocation);
+
+    if (!normalizedPickup || !normalizedPickup.coordinates || normalizedPickup.coordinates.length < 2) {
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de recogida inválidas'
       });
     }
 
-    if (!deliveryLocation?.coordinates || deliveryLocation.coordinates.length < 2) {
+    if (!normalizedDelivery || !normalizedDelivery.coordinates || normalizedDelivery.coordinates.length < 2) {
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de entrega inválidas'
       });
     }
 
-    const pickupCoords = pickupLocation.coordinates.map(Number);
-    const deliveryCoords = deliveryLocation.coordinates.map(Number);
+    const pickupCoords = normalizedPickup.coordinates;
+    const deliveryCoords = normalizedDelivery.coordinates;
 
-    // ✅ RESTRINGIR A JUICIALPA, CHONTALES
+    // ✅ VALIDAR JUICIALPA
     const [pickupLng, pickupLat] = pickupCoords;
     const [deliveryLng, deliveryLat] = deliveryCoords;
 
@@ -320,9 +346,7 @@ exports.createAssignedOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error creando mandado asignado:');
-    console.error('  Mensaje:', error.message);
-    console.error('  Stack:', error.stack);
+    console.error('❌ Error creando mandado asignado:', error);
     
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(e => ({
@@ -345,7 +369,7 @@ exports.createAssignedOrder = async (req, res) => {
 };
 
 // ============================================
-// RESTO DE FUNCIONES
+// OBTENER ÓRDENES DEL USUARIO
 // ============================================
 exports.getMyOrders = async (req, res) => {
   try {
@@ -396,6 +420,9 @@ exports.getMyOrders = async (req, res) => {
   }
 };
 
+// ============================================
+// OBTENER ÓRDENES DISPONIBLES
+// ============================================
 exports.getAvailableOrders = async (req, res) => {
   try {
     const orders = await Order.find({
@@ -420,6 +447,9 @@ exports.getAvailableOrders = async (req, res) => {
   }
 };
 
+// ============================================
+// ACEPTAR MANDADO PÚBLICO
+// ============================================
 exports.acceptPublicOrder = async (req, res) => {
   try {
     const mandaditoId = req.userId;
@@ -498,6 +528,9 @@ exports.acceptPublicOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// COMPLETAR MANDADO
+// ============================================
 exports.completeOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -554,6 +587,9 @@ exports.completeOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// CANCELAR MANDADO
+// ============================================
 exports.cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -619,6 +655,9 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
+// ============================================
+// SOLICITAR DEVOLUCIÓN DE CRÉDITOS
+// ============================================
 exports.requestCreditRefund = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -672,7 +711,9 @@ exports.requestCreditRefund = async (req, res) => {
   }
 };
 
-// ===== FUNCIONES ADICIONALES =====
+// ============================================
+// FUNCIONES ADICIONALES
+// ============================================
 exports.updateOrderLocation = async (req, res) => {
   try {
     const { orderId } = req.params;
