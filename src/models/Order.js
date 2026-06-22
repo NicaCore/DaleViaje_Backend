@@ -1,3 +1,4 @@
+// src/models/Order.js
 const mongoose = require('mongoose');
 const { ORDER_STATUS, ORDER_TYPES } = require('../config/constants');
 
@@ -94,9 +95,10 @@ const orderSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // ✅ CORREGIDO: Ahora acepta null
   creditRefundStatus: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'approved', 'rejected', null],
     default: null
   },
   completedAt: {
@@ -174,7 +176,6 @@ orderSchema.index({ createdAt: -1 });
 
 // PRE-SAVE: Generar voucherCode
 orderSchema.pre('save', function(next) {
-  // ✅ CORREGIDO: Generar voucherCode SIEMPRE
   if (!this.voucherCode) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
