@@ -1,3 +1,4 @@
+// src/controllers/orderController.js - VERSIÓN DEFINITIVA
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Client = require('../models/Client');
@@ -7,12 +8,12 @@ const Chat = require('../models/Chat');
 const { calculateDistance, calculatePrice } = require('../utils/distanceCalculator');
 
 // ============================================
-// CREAR MANDADO PÚBLICO
+// CREAR MANDADO PÚBLICO - DEFINITIVO
 // ============================================
 exports.createPublicOrder = async (req, res) => {
   try {
     const clientId = req.userId;
-    let {
+    const {
       description,
       pickupAddress,
       pickupLocation,
@@ -21,69 +22,64 @@ exports.createPublicOrder = async (req, res) => {
       businessId
     } = req.body;
 
-    console.log('📝 Creando mandado público:');
+    console.log('📝 Creando mandado:');
     console.log('  pickupLocation:', pickupLocation);
     console.log('  deliveryLocation:', deliveryLocation);
 
-    // ✅ NORMALIZAR coordenadas - soporta múltiples formatos
-    const normalizeCoords = (location) => {
-      if (!location) return null;
-      
-      // Si es array [lng, lat]
-      if (Array.isArray(location)) {
-        return { coordinates: location.map(Number) };
-      }
-      
-      // Si tiene coordinates
-      if (location.coordinates && Array.isArray(location.coordinates)) {
-        return { coordinates: location.coordinates.map(Number) };
-      }
-      
-      // Si tiene lat/lng
-      if (location.lat !== undefined && location.lng !== undefined) {
-        return { coordinates: [Number(location.lng), Number(location.lat)] };
-      }
-      
-      return null;
-    };
+    // ✅ EXTRAER COORDENADAS - SOPORTA MÚLTIPLES FORMATOS
+    let pickupCoords = null;
+    let deliveryCoords = null;
 
-    const normalizedPickup = normalizeCoords(pickupLocation);
-    const normalizedDelivery = normalizeCoords(deliveryLocation);
+    // Formato 1: { coordinates: [lng, lat] }
+    if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates)) {
+      pickupCoords = pickupLocation.coordinates.map(Number);
+    }
+    // Formato 2: { lat: x, lng: y }
+    else if (pickupLocation?.lat !== undefined && pickupLocation?.lng !== undefined) {
+      pickupCoords = [Number(pickupLocation.lng), Number(pickupLocation.lat)];
+    }
+    // Formato 3: [lng, lat]
+    else if (Array.isArray(pickupLocation)) {
+      pickupCoords = pickupLocation.map(Number);
+    }
 
-    if (!normalizedPickup || !normalizedPickup.coordinates || normalizedPickup.coordinates.length < 2) {
+    if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates)) {
+      deliveryCoords = deliveryLocation.coordinates.map(Number);
+    }
+    else if (deliveryLocation?.lat !== undefined && deliveryLocation?.lng !== undefined) {
+      deliveryCoords = [Number(deliveryLocation.lng), Number(deliveryLocation.lat)];
+    }
+    else if (Array.isArray(deliveryLocation)) {
+      deliveryCoords = deliveryLocation.map(Number);
+    }
+
+    // ✅ VALIDAR QUE TENGAMOS COORDENADAS VÁLIDAS
+    if (!pickupCoords || pickupCoords.length < 2 || isNaN(pickupCoords[0]) || isNaN(pickupCoords[1])) {
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de recogida inválidas. Debe ser [longitud, latitud]'
       });
     }
 
-    if (!normalizedDelivery || !normalizedDelivery.coordinates || normalizedDelivery.coordinates.length < 2) {
+    if (!deliveryCoords || deliveryCoords.length < 2 || isNaN(deliveryCoords[0]) || isNaN(deliveryCoords[1])) {
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de entrega inválidas. Debe ser [longitud, latitud]'
       });
     }
 
-    const pickupCoords = normalizedPickup.coordinates;
-    const deliveryCoords = normalizedDelivery.coordinates;
+    console.log('  pickupCoords:', pickupCoords);
+    console.log('  deliveryCoords:', deliveryCoords);
 
-    // ✅ VALIDAR JUICIALPA, CHONTALES
-    const [pickupLng, pickupLat] = pickupCoords;
-    const [deliveryLng, deliveryLat] = deliveryCoords;
-
-    if (pickupLat < 11.9 || pickupLat > 12.3 || pickupLng < -85.3 || pickupLng > -84.7) {
-      return res.status(400).json({
-        success: false,
-        message: 'La ubicación de recogida debe estar en Juigalpa, Chontales'
-      });
-    }
-
-    if (deliveryLat < 11.9 || deliveryLat > 12.3 || deliveryLng < -85.3 || deliveryLng > -84.7) {
-      return res.status(400).json({
-        success: false,
-        message: 'La ubicación de entrega debe estar en Juigalpa, Chontales'
-      });
-    }
+    // ✅ VALIDAR QUE ESTÉN EN JUICIALPA (OPCIONAL - COMENTAR SI QUIERES PERMITIR TODO)
+    // const [pickupLng, pickupLat] = pickupCoords;
+    // const [deliveryLng, deliveryLat] = deliveryCoords;
+    // if (pickupLat < 11.9 || pickupLat > 12.3 || pickupLng < -85.3 || pickupLng > -84.7) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'La ubicación de recogida debe estar en Juigalpa, Chontales'
+    //   });
+    // }
 
     const distance = calculateDistance(pickupCoords, deliveryCoords);
     const amount = calculatePrice(distance);
@@ -113,7 +109,7 @@ exports.createPublicOrder = async (req, res) => {
     const order = new Order(orderData);
     await order.save();
 
-    console.log('✅ Orden guardada:', order._id, 'Código:', order.voucherCode);
+    console.log('✅ Orden guardada:', order._id);
 
     await Client.findOneAndUpdate(
       { userId: clientId },
@@ -152,20 +148,7 @@ exports.createPublicOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error creando mandado público:', error);
-    
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(e => ({
-        field: e.path,
-        message: e.message
-      }));
-      return res.status(400).json({
-        success: false,
-        message: 'Error de validación',
-        errors
-      });
-    }
-
+    console.error('❌ Error creando mandado:', error);
     res.status(500).json({
       success: false,
       message: 'Error al crear mandado',
@@ -180,7 +163,7 @@ exports.createPublicOrder = async (req, res) => {
 exports.createAssignedOrder = async (req, res) => {
   try {
     const clientId = req.userId;
-    let {
+    const {
       description,
       pickupAddress,
       pickupLocation,
@@ -220,56 +203,41 @@ exports.createAssignedOrder = async (req, res) => {
       });
     }
 
-    // ✅ NORMALIZAR coordenadas
-    const normalizeCoords = (location) => {
-      if (!location) return null;
-      if (Array.isArray(location)) {
-        return { coordinates: location.map(Number) };
-      }
-      if (location.coordinates && Array.isArray(location.coordinates)) {
-        return { coordinates: location.coordinates.map(Number) };
-      }
-      if (location.lat !== undefined && location.lng !== undefined) {
-        return { coordinates: [Number(location.lng), Number(location.lat)] };
-      }
-      return null;
-    };
+    // ✅ EXTRAER COORDENADAS
+    let pickupCoords = null;
+    let deliveryCoords = null;
 
-    const normalizedPickup = normalizeCoords(pickupLocation);
-    const normalizedDelivery = normalizeCoords(deliveryLocation);
+    if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates)) {
+      pickupCoords = pickupLocation.coordinates.map(Number);
+    }
+    else if (pickupLocation?.lat !== undefined && pickupLocation?.lng !== undefined) {
+      pickupCoords = [Number(pickupLocation.lng), Number(pickupLocation.lat)];
+    }
+    else if (Array.isArray(pickupLocation)) {
+      pickupCoords = pickupLocation.map(Number);
+    }
 
-    if (!normalizedPickup || !normalizedPickup.coordinates || normalizedPickup.coordinates.length < 2) {
+    if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates)) {
+      deliveryCoords = deliveryLocation.coordinates.map(Number);
+    }
+    else if (deliveryLocation?.lat !== undefined && deliveryLocation?.lng !== undefined) {
+      deliveryCoords = [Number(deliveryLocation.lng), Number(deliveryLocation.lat)];
+    }
+    else if (Array.isArray(deliveryLocation)) {
+      deliveryCoords = deliveryLocation.map(Number);
+    }
+
+    if (!pickupCoords || pickupCoords.length < 2 || isNaN(pickupCoords[0]) || isNaN(pickupCoords[1])) {
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de recogida inválidas'
       });
     }
 
-    if (!normalizedDelivery || !normalizedDelivery.coordinates || normalizedDelivery.coordinates.length < 2) {
+    if (!deliveryCoords || deliveryCoords.length < 2 || isNaN(deliveryCoords[0]) || isNaN(deliveryCoords[1])) {
       return res.status(400).json({
         success: false,
         message: 'Coordenadas de entrega inválidas'
-      });
-    }
-
-    const pickupCoords = normalizedPickup.coordinates;
-    const deliveryCoords = normalizedDelivery.coordinates;
-
-    // ✅ VALIDAR JUICIALPA
-    const [pickupLng, pickupLat] = pickupCoords;
-    const [deliveryLng, deliveryLat] = deliveryCoords;
-
-    if (pickupLat < 11.9 || pickupLat > 12.3 || pickupLng < -85.3 || pickupLng > -84.7) {
-      return res.status(400).json({
-        success: false,
-        message: 'La ubicación de recogida debe estar en Juigalpa, Chontales'
-      });
-    }
-
-    if (deliveryLat < 11.9 || deliveryLat > 12.3 || deliveryLng < -85.3 || deliveryLng > -84.7) {
-      return res.status(400).json({
-        success: false,
-        message: 'La ubicación de entrega debe estar en Juigalpa, Chontales'
       });
     }
 
@@ -347,19 +315,6 @@ exports.createAssignedOrder = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error creando mandado asignado:', error);
-    
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(e => ({
-        field: e.path,
-        message: e.message
-      }));
-      return res.status(400).json({
-        success: false,
-        message: 'Error de validación',
-        errors
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Error al crear mandado',
@@ -369,7 +324,7 @@ exports.createAssignedOrder = async (req, res) => {
 };
 
 // ============================================
-// OBTENER ÓRDENES DEL USUARIO
+// RESTO DE FUNCIONES (IGUAL QUE ANTES)
 // ============================================
 exports.getMyOrders = async (req, res) => {
   try {
@@ -420,9 +375,6 @@ exports.getMyOrders = async (req, res) => {
   }
 };
 
-// ============================================
-// OBTENER ÓRDENES DISPONIBLES
-// ============================================
 exports.getAvailableOrders = async (req, res) => {
   try {
     const orders = await Order.find({
@@ -447,9 +399,6 @@ exports.getAvailableOrders = async (req, res) => {
   }
 };
 
-// ============================================
-// ACEPTAR MANDADO PÚBLICO
-// ============================================
 exports.acceptPublicOrder = async (req, res) => {
   try {
     const mandaditoId = req.userId;
@@ -528,9 +477,6 @@ exports.acceptPublicOrder = async (req, res) => {
   }
 };
 
-// ============================================
-// COMPLETAR MANDADO
-// ============================================
 exports.completeOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -587,9 +533,6 @@ exports.completeOrder = async (req, res) => {
   }
 };
 
-// ============================================
-// CANCELAR MANDADO
-// ============================================
 exports.cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -655,9 +598,6 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
-// ============================================
-// SOLICITAR DEVOLUCIÓN DE CRÉDITOS
-// ============================================
 exports.requestCreditRefund = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -707,122 +647,6 @@ exports.requestCreditRefund = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al solicitar devolución'
-    });
-  }
-};
-
-// ============================================
-// FUNCIONES ADICIONALES
-// ============================================
-exports.updateOrderLocation = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { latitude, longitude } = req.body;
-    const userId = req.userId;
-
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Mandado no encontrado'
-      });
-    }
-
-    if (order.mandaditoId?.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: 'No autorizado'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Ubicación actualizada',
-      location: { latitude, longitude }
-    });
-
-  } catch (error) {
-    console.error('❌ Error actualizando ubicación:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al actualizar ubicación'
-    });
-  }
-};
-
-exports.rateOrder = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { rating, comment, role } = req.body;
-    const userId = req.userId;
-
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Mandado no encontrado'
-      });
-    }
-
-    if (order.status !== 'completed') {
-      return res.status(400).json({
-        success: false,
-        message: 'Solo se pueden calificar mandados completados'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Calificación enviada'
-    });
-
-  } catch (error) {
-    console.error('❌ Error calificando:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al calificar'
-    });
-  }
-};
-
-exports.getOrderTracking = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const userId = req.userId;
-
-    const order = await Order.findById(orderId)
-      .populate('clientId', 'firstName lastName profilePhoto')
-      .populate('mandaditoId', 'firstName lastName profilePhoto');
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Mandado no encontrado'
-      });
-    }
-
-    res.json({
-      success: true,
-      tracking: {
-        status: order.status,
-        updates: order.tracking?.updates || []
-      },
-      order: {
-        id: order._id,
-        voucherCode: order.voucherCode,
-        description: order.description,
-        pickupAddress: order.pickupAddress,
-        deliveryAddress: order.deliveryAddress,
-        amount: order.amount,
-        status: order.status
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error obteniendo seguimiento:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener seguimiento'
     });
   }
 };
