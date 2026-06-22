@@ -1,3 +1,4 @@
+// src/models/Order.js - VERSIÓN DEFINITIVA
 const mongoose = require('mongoose');
 const { ORDER_STATUS, ORDER_TYPES } = require('../config/constants');
 
@@ -31,16 +32,19 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: [true, 'La dirección de recogida es requerida']
   },
+  // ✅ CAMBIO IMPORTANTE: pickupLocation como objeto con coordinates ARRAY
   pickupLocation: {
-    type: [Number],
-    required: true,
-    validate: {
-      validator: function(v) {
-        return Array.isArray(v) && v.length === 2 &&
-          typeof v[0] === 'number' && typeof v[1] === 'number' &&
-          !isNaN(v[0]) && !isNaN(v[1]);
-      },
-      message: 'pickupLocation debe ser un array de 2 números [longitud, latitud]'
+    coordinates: {
+      type: [Number],
+      required: true,
+      validate: {
+        validator: function(v) {
+          return Array.isArray(v) && v.length === 2 &&
+            typeof v[0] === 'number' && typeof v[1] === 'number' &&
+            !isNaN(v[0]) && !isNaN(v[1]);
+        },
+        message: 'pickupLocation.coordinates debe ser un array de 2 números [longitud, latitud]'
+      }
     }
   },
   deliveryAddress: {
@@ -48,15 +52,17 @@ const orderSchema = new mongoose.Schema({
     required: [true, 'La dirección de entrega es requerida']
   },
   deliveryLocation: {
-    type: [Number],
-    required: true,
-    validate: {
-      validator: function(v) {
-        return Array.isArray(v) && v.length === 2 &&
-          typeof v[0] === 'number' && typeof v[1] === 'number' &&
-          !isNaN(v[0]) && !isNaN(v[1]);
-      },
-      message: 'deliveryLocation debe ser un array de 2 números [longitud, latitud]'
+    coordinates: {
+      type: [Number],
+      required: true,
+      validate: {
+        validator: function(v) {
+          return Array.isArray(v) && v.length === 2 &&
+            typeof v[0] === 'number' && typeof v[1] === 'number' &&
+            !isNaN(v[0]) && !isNaN(v[1]);
+        },
+        message: 'deliveryLocation.coordinates debe ser un array de 2 números [longitud, latitud]'
+      }
     }
   },
   distance: {
@@ -168,7 +174,7 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// ÍNDICES
+// ✅ SOLO ÍNDICES BÁSICOS - SIN 2dsphere
 orderSchema.index({ clientId: 1, status: 1 });
 orderSchema.index({ mandaditoId: 1, status: 1 });
 orderSchema.index({ voucherCode: 1 });

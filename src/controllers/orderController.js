@@ -1,3 +1,4 @@
+// src/controllers/orderController.js - SOLO createPublicOrder ACTUALIZADO
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Client = require('../models/Client');
@@ -7,7 +8,7 @@ const Chat = require('../models/Chat');
 const { calculateDistance, calculatePrice } = require('../utils/distanceCalculator');
 
 // ============================================
-// CREAR MANDADO PÚBLICO
+// CREAR MANDADO PÚBLICO - ACTUALIZADO
 // ============================================
 exports.createPublicOrder = async (req, res) => {
   try {
@@ -22,7 +23,10 @@ exports.createPublicOrder = async (req, res) => {
     } = req.body;
 
     console.log('📝 Creando mandado público:');
+    console.log('  pickupLocation:', pickupLocation);
+    console.log('  deliveryLocation:', deliveryLocation);
 
+    // ✅ EXTRAER COORDENADAS
     let pickupCoords = null;
     let deliveryCoords = null;
 
@@ -59,22 +63,33 @@ exports.createPublicOrder = async (req, res) => {
     const distance = calculateDistance(pickupCoords, deliveryCoords);
     const amount = calculatePrice(distance);
 
+    console.log(`  Distancia: ${distance}km, Precio: C$${amount}`);
+
+    // ✅ NUEVO FORMATO: pickupLocation y deliveryLocation como objetos con coordinates
     const orderData = {
       clientId,
       type: 'public',
       description: description || 'Mandado sin descripción',
       pickupAddress: pickupAddress || 'Dirección no especificada',
-      pickupLocation: pickupCoords,
+      pickupLocation: {
+        coordinates: pickupCoords
+      },
       deliveryAddress: deliveryAddress || 'Dirección no especificada',
-      deliveryLocation: deliveryCoords,
+      deliveryLocation: {
+        coordinates: deliveryCoords
+      },
       distance: distance,
       amount: amount,
       status: 'pending',
       businessId: businessId || null
     };
 
+    console.log('📦 Guardando orden:', JSON.stringify(orderData, null, 2));
+
     const order = new Order(orderData);
     await order.save();
+
+    console.log('✅ Orden guardada:', order._id);
 
     await Client.findOneAndUpdate(
       { userId: clientId },
@@ -113,7 +128,23 @@ exports.createPublicOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error creando mandado público:', error);
+    console.error('❌ Error creando mandado público:');
+    console.error('  Mensaje:', error.message);
+    console.error('  Stack:', error.stack);
+    console.error('  Body:', JSON.stringify(req.body, null, 2));
+    
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(e => ({
+        field: e.path,
+        message: e.message
+      }));
+      return res.status(400).json({
+        success: false,
+        message: 'Error de validación',
+        errors
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Error al crear mandado',
@@ -123,7 +154,7 @@ exports.createPublicOrder = async (req, res) => {
 };
 
 // ============================================
-// CREAR MANDADO ASIGNADO
+// CREAR MANDADO ASIGNADO - ACTUALIZADO
 // ============================================
 exports.createAssignedOrder = async (req, res) => {
   try {
@@ -210,9 +241,13 @@ exports.createAssignedOrder = async (req, res) => {
       type: 'assigned',
       description: description || 'Mandado sin descripción',
       pickupAddress: pickupAddress || 'Dirección no especificada',
-      pickupLocation: pickupCoords,
+      pickupLocation: {
+        coordinates: pickupCoords
+      },
       deliveryAddress: deliveryAddress || 'Dirección no especificada',
-      deliveryLocation: deliveryCoords,
+      deliveryLocation: {
+        coordinates: deliveryCoords
+      },
       distance: distance,
       amount: amount,
       status: 'accepted',
@@ -278,7 +313,7 @@ exports.createAssignedOrder = async (req, res) => {
 };
 
 // ============================================
-// OBTENER ÓRDENES DEL USUARIO
+// RESTO DE FUNCIONES (IGUAL)
 // ============================================
 exports.getMyOrders = async (req, res) => {
   try {
@@ -329,9 +364,6 @@ exports.getMyOrders = async (req, res) => {
   }
 };
 
-// ============================================
-// OBTENER ÓRDENES DISPONIBLES (MANDADITOS)
-// ============================================
 exports.getAvailableOrders = async (req, res) => {
   try {
     const orders = await Order.find({
@@ -356,9 +388,6 @@ exports.getAvailableOrders = async (req, res) => {
   }
 };
 
-// ============================================
-// ACEPTAR MANDADO PÚBLICO
-// ============================================
 exports.acceptPublicOrder = async (req, res) => {
   try {
     const mandaditoId = req.userId;
@@ -437,9 +466,6 @@ exports.acceptPublicOrder = async (req, res) => {
   }
 };
 
-// ============================================
-// COMPLETAR MANDADO
-// ============================================
 exports.completeOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -496,9 +522,6 @@ exports.completeOrder = async (req, res) => {
   }
 };
 
-// ============================================
-// CANCELAR MANDADO
-// ============================================
 exports.cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -564,9 +587,6 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
-// ============================================
-// SOLICITAR DEVOLUCIÓN DE CRÉDITOS
-// ============================================
 exports.requestCreditRefund = async (req, res) => {
   try {
     const { orderId } = req.params;
